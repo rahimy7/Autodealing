@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vehicle Lab</title>
+<style>
+  body { margin: 0; background: #e9ecf0; font: 12px system-ui; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 6px; }
+  figure { margin: 0; background: linear-gradient(#f7f8fa, #dfe3e8); border-radius: 6px; position: relative; }
+  figure.dark { background: #0b0c10; }
+  figure img { width: 100%; display: block; }
+  figcaption { position: absolute; left: 8px; top: 6px; color: #333; font-weight: 600; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div class="grid" id="grid"></div>
+<script type="module">
+import * as THREE from 'three';
+import { buildCar, disposeCar, BODY_TYPES } from '../js/car-factory.js';
+import { makeStudioEnv, makeContactShadow, frameCamera } from '../js/studio.js';
+
+const q = new URLSearchParams(location.search);
+const angle = q.get('angle') || 'front';
+const only = q.get('type');
+const W = 900, H = 520;
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+const scene = new THREE.Scene();
+scene.environment = makeStudioEnv(renderer);
+const camera = new THREE.PerspectiveCamera(28, W / H, 0.1, 100);
+const colors = { coupe: '#b3121f', supercar: '#f2b705', sedan: '#0f2747', suv: '#4b5a3c', suv3: '#1f2a36', truck: '#5d646d', crossover: '#e9ebee', hatch: '#e8590c' };
+const rims = { coupe: 'sport', supercar: 'sport', sedan: 'multi', suv: 'offroad', suv3: 'multi', truck: 'offroad', crossover: 'aero', hatch: 'classic' };
+const grid = document.getElementById('grid');
+const t0 = performance.now();
+for (const type of Object.keys(BODY_TYPES)) {
+  if (only && type !== only) continue;
+  const car = buildCar({ type, color: colors[type], rim: rims[type], rimFinish: type === 'supercar' ? 'black' : 'silver', caliper: type === 'coupe' ? '#f2b705' : undefined });
+  const shadow = makeContactShadow(car);
+  scene.add(car, shadow);
+  frameCamera(camera, car, angle, W / H);
+  if (q.get('az')) { const d = frameCamera(camera, car, { az: +q.get('az'), el: +(q.get('el') || 10), fov: 28 }, W / H); }
+  renderer.render(scene, camera);
+  const fig = document.createElement('figure');
+  fig.innerHTML = `<img src="${renderer.domElement.toDataURL('image/png')}"><figcaption>${type}</figcaption>`;
+  if (q.get('save')) {
+    const blob = await new Promise((r) => renderer.domElement.toBlob(r, 'image/png'));
+    await fetch(`/__save?name=img/_lab/${type}-${angle}.png`, { method: 'POST', body: blob });
+  }
+  grid.appendChild(fig);
+  scene.remove(car, shadow);
+  disposeCar(car);
+}
+document.title = 'done ' + Math.round(performance.now() - t0) + 'ms';
+</script>
+</body>
+</html>

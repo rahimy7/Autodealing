@@ -1,0 +1,26 @@
+{
+	admin off
+	auto_https off
+}
+
+# Railway termina HTTPS en su proxy y entrega el puerto en $PORT
+:{$PORT:8080} {
+	root * /srv
+	encode zstd gzip
+	file_server
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options SAMEORIGIN
+		-Server
+	}
+
+	# HTML/CSS/JS sin hash en el nombre: siempre revalidar (ETag) para que un deploy se vea al instante
+	@code path / *.html *.css *.js
+	header @code Cache-Control "no-cache"
+
+	# imágenes: 1 día (si reemplazas una foto con el mismo nombre se actualiza en <24 h)
+	@media path *.webp *.png *.jpg *.jpeg *.svg
+	header @media Cache-Control "public, max-age=86400"
+}

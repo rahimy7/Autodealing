@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Novara — Image Renderer</title>
+<style>
+  body { margin: 0; font: 13px/1.5 ui-monospace, Menlo, monospace; background: #0b0c10; color: #cfd6e2; padding: 16px; }
+  #log { white-space: pre-wrap; }
+  img { width: 240px; margin: 4px; background: #1a1d24; border-radius: 6px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<h3>Novara Motors · generating vehicle photography</h3>
+<p>Requires <code>python3 tools/devserver.py</code> (it saves files into <code>img/</code>). Options: <code>?only=cars|spin|hero|showroom</code>, <code>?id=valtor-gt</code></p>
+<div id="log"></div>
+<div id="thumbs"></div>
+<script type="module">
+import * as THREE from 'three';
+import { Reflector } from 'three/addons/objects/Reflector.js';
+import { buildCar, disposeCar } from '../js/car-factory.js';
+import { makeStudioEnv, makeContactShadow, frameCamera } from '../js/studio.js';
+import { INVENTORY, SPOTLIGHT } from '../js/data.js';
+
+const q = new URLSearchParams(location.search);
+const only = q.get('only');
+const onlyId = q.get('id');
+const logEl = document.getElementById('log');
+const log = (m) => { logEl.textContent += m + '\n'; };
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.setPixelRatio(1);
+const scene = new THREE.Scene();
+scene.environment = makeStudioEnv(renderer);
+const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 200);
+const out = document.createElement('canvas');
+
+async function snap(name, w, h, scale = 1.5, quality = 0.9, keepBg = false) {
+  const W = Math.round(w * scale), H = Math.round(h * scale);
+  renderer.setSize(W, H, false);
+  renderer.render(scene, camera);
+  out.width = w; out.height = h;
+  const ctx = out.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(renderer.domElement, 0, 0, w, h);
+  const blob = await new Promise((r) => out.toBlob(r, 'image/webp', quality));
+  const res = await fetch(`/__save?name=${encodeURIComponent(name)}`, { method: 'POST', body: blob });
+  log(`${res.ok ? '✓' : '✗'} ${name}  ${(blob.size / 1024).toFixed(0)} KB`);
+  const img = new Image();
+  img.src = URL.createObjectURL(blob);
+  document.getElementById('thumbs').appendChild(img);
+}
+
+function stage(cfg, attach = false) {
+  const car = buildCar(cfg);
+  const shadow = makeContactShadow(car, 1);
+  if (attach) { car.add(shadow); scene.add(car); } else scene.add(car, shadow);
+  return { car, done: () => { scene.remove(car, shadow); disposeCar(car); shadow.geometry.dispose(); shadow.material.map.dispose(); shadow.material.dispose(); } };
+}
+
+const t0 = performance.now();
+const list = INVENTORY.filter((v) => !onlyId || v.id === onlyId);
+
+if (!only || only === 'cars') {
+  for (const v of list) {
+    const s = stage(v.config);
+    for (const angle of ['front', 'side', 'rear']) {
+      frameCamera(camera, s.car, angle, 1200 / 720, 1.06);
+      await snap(`img/cars/${v.id}-${angle}.webp`, 1200, 720);
+    }
+    s.done();
+  }
+}
+
+if (!only || only === 'hero') {
+  const v = INVENTORY.find((x) => x.id === 'valtor-gt');
+  const s = stage(v.config);
+  frameCamera(camera, s.car, { az: 30, el: 7, fov: 17, vpad: 1.12 }, 1800 / 1000, 1.07);
+  await snap('img/hero-classic.webp', 1800, 1000, 1.25, 0.92);
+  s.done();
+}
+
+if (!only || only === 'spin') {
+  const v = INVENTORY.find((x) => x.id === SPOTLIGHT.id);
+  const s = stage(v.config);
+  const ref = { az: 90, el: 10, fov: 26 };
+  // fit once on the widest view so every frame shares the same scale
+  let dist = 0;
+  for (const az of [0, 35, 90, 145, 180, 215, 270, 325]) dist = Math.max(dist, frameCamera(camera, s.car, { ...ref, az }, 1400 / 820, 1.12));
+  const target = new THREE.Vector3(0, 0.55, 0);
+  for (let i = 0; i < SPOTLIGHT.frames; i++) {
+    const az = THREE.MathUtils.degToRad(35 + (i / SPOTLIGHT.frames) * 360);
+    const el = THREE.MathUtils.degToRad(ref.el);
+    camera.position.set(Math.cos(az) * Math.cos(el) * dist, target.y + Math.sin(el) * dist, Math.sin(az) * Math.cos(el) * dist);
+    camera.lookAt(target);
+    await snap(`img/spin/${v.id}/${String(i).padStart(2, '0')}.webp`, 1400, 820, 1.25, 0.86);
+  }
+  s.done();
+}
+
+if (!only || only === 'showroom') {
+  // a dark gallery shot with three cars on a mirror floor
+  const prevEnv = scene.environment;
+  renderer.toneMappingExposure = 1.0;
+  scene.background = new THREE.Color(0x07080b);
+  scene.fog = new THREE.Fog(0x07080b, 10, 26);
+  const mirror = new Reflector(new THREE.PlaneGeometry(60, 60), { textureWidth: 2048, textureHeight: 1024, color: 0x606468 });
+  mirror.rotation.x = -Math.PI / 2;
+  const veil = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshBasicMaterial({ color: 0x07080b, transparent: true, opacity: 0.62 }));
+  veil.rotation.x = -Math.PI / 2; veil.position.y = 0.001;
+  scene.add(mirror, veil);
+  const picks = [
+    { id: 'lumen-aero', pos: [-5.0, 0, -2.6], rot: -0.35 },
+    { id: 'valtor-spectre', pos: [0, 0, 0.2], rot: -0.6 },
+    { id: 'halden-crestline', pos: [5.2, 0, -2.8], rot: -0.85 },
+  ];
+  const staged = picks.map((p) => {
+    const v = INVENTORY.find((x) => x.id === p.id);
+    const s = stage({ ...v.config, lightIntensity: 3 }, true);
+    s.car.position.set(...p.pos); s.car.rotation.y = p.rot;
+    return s;
+  });
+  const glow = new THREE.Mesh(new THREE.TorusGeometry(3.4, 0.02, 8, 200), new THREE.MeshBasicMaterial({ color: new THREE.Color(0x38e1ff).multiplyScalar(2.2), toneMapped: false }));
+  glow.rotation.x = -Math.PI / 2; glow.position.set(0, 0.01, 0.6);
+  scene.add(glow);
+  camera.fov = 30; camera.aspect = 1600 / 900;
+  camera.position.set(0.4, 2.9, 15.6);
+  camera.lookAt(0, 0.75, -0.8);
+  camera.updateProjectionMatrix();
+  await snap('img/showroom.webp', 1600, 900, 1.25, 0.88);
+  staged.forEach((s) => s.done());
+  scene.remove(mirror, veil, glow);
+  scene.environment = prevEnv; scene.background = null; scene.fog = null;
+}
+
+log(`\nDone in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
+document.title = 'RENDER DONE';
+</script>
+</body>
+</html>

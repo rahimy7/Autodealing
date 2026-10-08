@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en" data-view="immersive">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Novara Motors — New, Certified & Electric Vehicles in Miami, FL</title>
+  <meta name="description" content="Shop new, certified pre-owned and electric vehicles at Novara Motors in Miami, FL. Explore every car in interactive 3D, estimate payments and book a test drive.">
+  <meta name="theme-color" content="#05060a">
+  <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <script>
+    // apply saved view before first paint (no flash)
+    try { const v = localStorage.getItem('novara:view'); if (v === 'classic' || v === 'immersive') document.documentElement.dataset.view = v; } catch (e) {}
+  </script>
+  <script type="importmap">
+  { "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  } }
+  </script>
+  <script type="application/ld+json">
+  { "@context": "https://schema.org", "@type": "AutoDealer", "name": "Novara Motors",
+    "address": { "@type": "PostalAddress", "streetAddress": "1200 Novara Way", "addressLocality": "Miami", "addressRegion": "FL", "postalCode": "33137", "addressCountry": "US" },
+    "telephone": "+1-305-555-0199", "openingHours": ["Mo-Fr 09:00-20:00", "Sa 09:00-18:00"] }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#inventory">Skip to inventory</a>
+
+  <!-- ============ LOADER (immersive) ============ -->
+  <div class="loader only-immersive" id="loader" aria-hidden="true">
+    <div class="loader-gauge">
+      <svg viewBox="0 0 200 200">
+        <defs>
+          <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38e1ff"/><stop offset="1" stop-color="#7c5cff"/></linearGradient>
+        </defs>
+        <circle class="lg-track" cx="100" cy="100" r="84" pathLength="100"/>
+        <circle class="lg-bar" id="loaderBar" cx="100" cy="100" r="84" pathLength="100" stroke="url(#lg)"/>
+        <g class="lg-ticks"></g>
+      </svg>
+      <div class="loader-read"><span id="loaderNum">0</span><small>MPH</small></div>
+    </div>
+    <p class="loader-brand">NOVARA<span>MOTORS</span></p>
+    <p class="loader-tag" data-i18n="loader.tag">Warming up the showroom</p>
+  </div>
+
+  <div class="cursor" aria-hidden="true"><span class="cursor-dot"></span><span class="cursor-ring"></span></div>
+  <div class="grain only-immersive" aria-hidden="true"></div>
+
+  <!-- ============ TOP BAR (classic) ============ -->
+  <div class="topbar only-classic">
+    <div class="container topbar-inner">
+      <span class="tb-item"><svg class="i"><use href="#i-pin"/></svg>1200 Novara Way, Miami, FL</span>
+      <span class="tb-item"><svg class="i"><use href="#i-clock"/></svg><span data-i18n="top.hours">Open today 9 AM – 8 PM</span></span>
+      <span class="tb-item tb-lang"><svg class="i"><use href="#i-chat"/></svg><span data-i18n="top.spanish">Se habla español</span></span>
+      <a class="tb-item tb-phone" href="tel:+13055550199"><svg class="i"><use href="#i-phone"/></svg>(305) 555-0199</a>
+    </div>
+  </div>
+
+  <!-- ============ NAV ============ -->
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="#top" aria-label="Novara Motors — home">
+        <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+          <defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--accent)"/><stop offset="1" style="stop-color:var(--accent-2)"/></linearGradient></defs>
+          <path d="M20 2 38 20 20 38 2 20Z" fill="none" stroke="url(#bm)" stroke-width="2.4"/>
+          <path d="M13 27V13l14 14V13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-word">NOVARA<small>MOTORS</small></span>
+      </a>
+      <nav class="nav-links" id="navLinks" aria-label="Primary">
+        <a href="#inventory" data-i18n="nav.inventory">Inventory</a>
+        <a href="#finance" data-i18n="nav.finance">Financing</a>
+        <a href="#trade" data-i18n="nav.trade">Trade-In</a>
+        <a href="#why" data-i18n="nav.why">Why Novara</a>
+        <a href="#visit" data-i18n="nav.visit">Visit</a>
+      </nav>
+      <div class="nav-actions">
+        <div class="seg view-toggle" role="group" aria-label="View">
+          <span class="seg-pill" aria-hidden="true"></span>
+          <button type="button" data-view-btn="immersive" aria-pressed="true" title="Immersive view">
+            <svg class="i"><use href="#i-cube"/></svg><span data-i18n="view.immersive">Immersive</span>
+          </button>
+          <button type="button" data-view-btn="classic" aria-pressed="false" title="Classic view">
+            <svg class="i"><use href="#i-grid"/></svg><span data-i18n="view.classic">Classic</span>
+          </button>
+        </div>
+        <button type="button" class="icon-btn lang-btn" id="langBtn" aria-label="Español / English">ES</button>
+        <button type="button" class="icon-btn fav-btn" id="favNav" aria-label="Saved vehicles">
+          <svg class="i"><use href="#i-heart"/></svg><span class="fav-count" id="favCount" hidden>0</span>
+        </button>
+        <a class="btn btn-primary btn-sm nav-cta" href="#visit"><span data-i18n="cta.short">Test Drive</span></a>
+        <button type="button" class="menu-btn" id="menuBtn" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks"><span></span><span></span></button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- ============ HERO ============ -->
+    <section class="hero" aria-label="Featured vehicles">
+      <!-- Immersive: live 3D showroom -->
+      <div class="hero-immersive only-immersive">
+        <canvas id="heroCanvas" aria-label="Interactive 3D vehicle. Drag to rotate."></canvas>
+        <div class="hero-fade" aria-hidden="true"></div>
+        <div class="container hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow reveal-hero"><span class="pulse"></span><span data-i18n="hero.eyebrow">2026 Collection · Miami, FL</span></p>
+            <h1 class="hero-title">
+              <span class="line"><span data-i18n="hero.t1">Drive the</span></span>
+              <span class="line"><span class="grad" data-i18n="hero.t2">Extraordinary</span></span>
+            </h1>
+            <p class="hero-lead reveal-hero" data-i18n="hero.lead">Hand-picked performance, luxury and electric vehicles. Every one inspected, certified and ready for you. Spin it, paint it, then come drive it.</p>
+            <div class="hero-ctas reveal-hero">
+              <a class="btn btn-primary magnetic" href="#inventory"><span data-i18n="cta.explore">Explore Inventory</span><svg class="i"><use href="#i-arrow"/></svg></a>
+              <a class="btn btn-ghost magnetic" href="#visit"><span data-i18n="cta.testdrive">Book a Test Drive</span></a>
+            </div>
+            <ul class="hero-badges reveal-hero">
+              <li><svg class="i"><use href="#i-bolt"/></svg><span data-i18n="hero.b1">Same-day approvals</span></li>
+              <li><svg class="i"><use href="#i-truck"/></svg><span data-i18n="hero.b2">Home delivery in Florida</span></li>
+              <li><svg class="i"><use href="#i-shield"/></svg><span data-i18n="hero.b3">7-day exchange</span></li>
+            </ul>
+          </div>
+        </div>
+        <aside class="configurator glass reveal-hero" aria-label="3D configurator">
+          <div class="model-tabs" role="tablist" id="modelTabs"></div>
+          <div class="cfg-id">
+            <p class="cfg-make" id="cfgMake">Valtor</p>
+            <h2 class="cfg-name" id="cfgName">GT Coupe</h2>
+          </div>
+          <div class="cfg-stats" id="cfgStats"></div>
+          <div class="cfg-paint">
+            <p><span data-i18n="hero.paint">Paint</span> · <b id="paintName">Inferno Red</b></p>
+            <div class="swatches" id="swatches" role="radiogroup" aria-label="Paint color"></div>
+          </div>
+          <div class="cfg-buy">
+            <div class="cfg-price"><small data-i18n="hero.from">Price</small><strong id="cfgPrice">$68,900</strong></div>
+            <button type="button" class="btn btn-primary" id="cfgDetails"><span data-i18n="hero.view">View this vehicle</span><svg class="i"><use href="#i-arrow"/></svg></button>
+          </div>
+        </aside>
+        <div class="hero-hint" aria-hidden="true"><svg class="i"><use href="#i-rotate"/></svg><span data-i18n="hero.hint">Drag to rotate 360°</span></div>
+        <a class="scroll-cue" href="#types" aria-label="Scroll down"><span class="wheel"></span><small data-i18n="hero.scroll">Scroll</small></a>
+      </div>
+
+      <!-- Classic: search-first dealer hero -->
+      <div class="hero-classic only-classic">
+        <div class="container hc-grid">
+          <div class="hc-copy">
+            <p class="hc-kicker" data-i18n="hc.kicker">Miami's destination for new &amp; certified pre-owned</p>
+            <h1 data-i18n="hc.title">Find the right car at the right price.</h1>
+            <p class="hc-lead" data-i18n="hc.lead">Transparent pricing, real photos of every vehicle and financing for every credit profile — no pressure, no surprises.</p>
+            <form class="hc-search" id="classicSearch">
+              <label><span data-i18n="hc.type">Body type</span><select name="type" id="hcType"></select></label>
+              <label><span data-i18n="hc.make">Make</span><select name="make" id="hcMake"></select></label>
+              <label><span data-i18n="hc.max">Max price</span>
+                <select name="max" id="hcMax">
+                  <option value="" data-i18n="hc.any">Any</option>
+                  <option value="30000">$30,000</option><option value="50000">$50,000</option>
+                  <option value="75000">$75,000</option><option value="100000">$100,000</option>
+                </select>
+              </label>
+              <button class="btn btn-primary" type="submit"><svg class="i"><use href="#i-search"/></svg><span data-i18n="hc.search">Search inventory</span></button>
+            </form>
+            <ul class="hc-trust">
+              <li><svg class="i"><use href="#i-check"/></svg><span data-i18n="hc.t1">172-point certified inspection</span></li>
+              <li><svg class="i"><use href="#i-check"/></svg><span data-i18n="hc.t2">Financing for every credit</span></li>
+              <li><svg class="i"><use href="#i-check"/></svg><span data-i18n="hc.t3">Free vehicle history report</span></li>
+            </ul>
+          </div>
+          <div class="hc-visual">
+            <img src="img/hero-classic.webp" alt="Valtor GT Coupe in Inferno Red" width="1800" height="1000" fetchpriority="high">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ MARQUEE ============ -->
+    <div class="marquee only-immersive" aria-hidden="true"><div class="marquee-track" id="marquee"></div></div>
+    <div class="brand-strip only-classic">
+      <div class="container brand-strip-inner">
+        <span class="bs-label">Brands we carry</span>
+        <span class="bs-make">VALTOR</span><span class="bs-make">LUMEN</span><span class="bs-make">KESTREL</span><span class="bs-make">HALDEN</span><span class="bs-make">ORSA</span>
+      </div>
+    </div>
+
+    <!-- ============ BODY TYPES ============ -->
+    <section class="section" id="types">
+      <div class="container">
+        <header class="section-head reveal">
+          <p class="eyebrow" data-i18n="types.eyebrow">Shop by body style</p>
+          <h2 class="section-title" data-i18n="types.title">Find your shape.</h2>
+        </header>
+        <div class="type-grid" id="typeGrid"></div>
+      </div>
+    </section>
+
+    <!-- ============ INVENTORY ============ -->
+    <section class="section inventory" id="inventory">
+      <div class="container">
+        <header class="section-head row reveal">
+          <div>
+            <p class="eyebrow" data-i18n="inv.eyebrow">Live inventory</p>
+            <h2 class="section-title" data-i18n="inv.title">Ready to drive home.</h2>
+          </div>
+          <p class="inv-count" id="invCount" aria-live="polite">12 vehicles</p>
+        </header>
+
+        <div class="inv-layout">
+          <aside class="filters" id="filters" aria-label="Filters">
+            <div class="f-search">
+              <svg class="i"><use href="#i-search"/></svg>
+              <input type="search" id="fSearch" data-i18n-ph="inv.search" placeholder="Search make, model, color…" aria-label="Search inventory">
+            </div>
+            <div class="chips" id="fType" role="group" aria-label="Body type"></div>
+            <div class="f-row">
+              <label class="f-field"><span data-i18n="inv.condition">Condition</span>
+                <select id="fCond">
+                  <option value="" data-i18n="inv.anyCond">Any condition</option>
+                  <option value="new" data-i18n="cond.new">New</option>
+                  <option value="certified" data-i18n="cond.certified">Certified Pre-Owned</option>
+                  <option value="used" data-i18n="cond.used">Used</option>
+                </select>
+              </label>
+              <label class="f-field f-range"><span><span data-i18n="inv.maxPrice">Max price</span> <output id="fPriceOut">$200,000</output></span>
+                <input type="range" id="fPrice" min="20000" max="200000" step="5000" value="200000">
+              </label>
+              <label class="f-field"><span data-i18n="inv.sort">Sort by</span>
+                <select id="fSort">
+                  <option value="featured" data-i18n="sort.featured">Featured</option>
+                  <option value="priceAsc" data-i18n="sort.priceAsc">Price: low to high</option>
+                  <option value="priceDesc" data-i18n="sort.priceDesc">Price: high to low</option>
+                  <option value="milesAsc" data-i18n="sort.milesAsc">Mileage: lowest</option>
+                  <option value="yearDesc" data-i18n="sort.yearDesc">Year: newest</option>
+                </select>
+              </label>
+              <label class="f-check"><input type="checkbox" id="fSaved"><span data-i18n="inv.saved">Saved only</span></label>
+              <button type="button" class="link-btn" id="fReset" data-i18n="inv.reset">Reset filters</button>
+            </div>
+          </aside>
+
+          <div class="inv-main">
+            <div class="inv-toolbar only-classic">
+              <div class="seg layout-toggle" role="group" aria-label="Layout">
+                <button type="button" data-layout="grid" aria-pressed="true"><svg class="i"><use href="#i-grid"/></svg><span data-i18n="inv.grid">Grid</span></button>
+                <button type="button" data-layout="list" aria-pressed="false"><svg class="i"><use href="#i-list"/></svg><span data-i18n="inv.list">List</span></button>
+              </div>
+            </div>
+            <div class="car-grid" id="carGrid"></div>
+            <p class="empty" id="invEmpty" hidden data-i18n="inv.empty">No vehicles match those filters. Try widening your search.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SPOTLIGHT (scroll-driven 360°) ============ -->
+    <section class="spotlight" id="spotlight" aria-label="Vehicle of the month">
+      <div class="spot-sticky">
+        <div class="spot-bg" aria-hidden="true"><span>SPECTRE</span></div>
+        <div class="container spot-grid">
+          <div class="spot-copy reveal">
+            <p class="eyebrow" data-i18n="spot.eyebrow">Vehicle of the month</p>
+            <h2 class="spot-title">Valtor <span class="grad">Spectre</span></h2>
+            <p class="spot-lead" data-i18n="spot.lead">Mid-engine. 789 combined horsepower. An active rear wing that reads the road. Walk around it — scroll or drag.</p>
+            <ul class="spot-specs">
+              <li><strong data-count="789">789</strong><span data-i18n="spot.s1">hp hybrid V8</span></li>
+              <li><strong data-count="2.7" data-decimals="1">2.7</strong><span data-i18n="spot.s2">sec 0–60 mph</span></li>
+              <li><strong data-count="211">211</strong><span data-i18n="spot.s3">mph top speed</span></li>
+            </ul>
+            <div class="spot-actions">
+              <button type="button" class="btn btn-primary magnetic" data-open="valtor-spectre"><span data-i18n="spot.cta">Reserve yours</span><svg class="i"><use href="#i-arrow"/></svg></button>
+              <span class="spot-price">$189,000</span>
+            </div>
+          </div>
+          <div class="spot-visual">
+            <div class="spot-halo" aria-hidden="true"></div>
+            <canvas id="spinCanvas" width="1400" height="820" aria-label="Valtor Spectre 360° view"></canvas>
+            <div class="spot-dial" aria-hidden="true"><span id="spinDeg">0°</span><i id="spinBar"></i></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FINANCE ============ -->
+    <section class="section finance" id="finance">
+      <div class="container fin-grid">
+        <div class="fin-copy reveal">
+          <p class="eyebrow" data-i18n="fin.eyebrow">Financing</p>
+          <h2 class="section-title" data-i18n="fin.title">Know your payment before you visit.</h2>
+          <p class="lead" data-i18n="fin.lead">Our finance team works with 20+ lenders to get you the best rate — including first-time buyers and rebuilding credit.</p>
+          <ul class="ticks">
+            <li><svg class="i"><use href="#i-check"/></svg><span data-i18n="fin.p1">Soft credit check. No impact to your score.</span></li>
+            <li><svg class="i"><use href="#i-check"/></svg><span data-i18n="fin.p2">Decisions in minutes, not days.</span></li>
+            <li><svg class="i"><use href="#i-check"/></svg><span data-i18n="fin.p3">Lease, finance or cash. Your call.</span></li>
+          </ul>
+          <button type="button" class="btn btn-ghost" id="preapproveBtn"><span data-i18n="fin.cta">Get pre-approved</span><svg class="i"><use href="#i-arrow"/></svg></button>
+        </div>
+
+        <form class="calc card reveal" id="calc" onsubmit="return false">
+          <div class="calc-field">
+            <label for="cPrice"><span data-i18n="fin.price">Vehicle price</span><output id="cPriceOut"></output></label>
+            <input type="range" id="cPrice" min="10000" max="200000" step="500" value="54500">
+          </div>
+          <div class="calc-field">
+            <label for="cDown"><span data-i18n="fin.down">Down payment</span><output id="cDownOut"></output></label>
+            <input type="range" id="cDown" min="0" max="60000" step="500" value="6000">
+          </div>
+          <div class="calc-field">
+            <label for="cTrade"><span data-i18n="fin.trade">Trade-in value</span><output id="cTradeOut"></output></label>
+            <input type="range" id="cTrade" min="0" max="60000" step="500" value="0">
+          </div>
+          <div class="calc-two">
+            <label class="calc-apr"><span data-i18n="fin.apr">APR</span>
+              <span class="apr-input"><input type="number" id="cApr" value="6.9" min="0" max="29.9" step="0.1" inputmode="decimal"><i>%</i></span>
+            </label>
+            <div class="calc-term"><span data-i18n="fin.term">Term (months)</span>
+              <div class="seg term-seg" id="cTerm" role="radiogroup">
+                <button type="button" data-term="36">36</button><button type="button" data-term="48">48</button><button type="button" data-term="60">60</button><button type="button" data-term="72" aria-pressed="true">72</button><button type="button" data-term="84">84</button>
+              </div>
+            </div>
+          </div>
+          <div class="calc-result">
+            <p data-i18n="fin.monthly">Estimated monthly payment</p>
+            <div class="calc-big"><span id="cMonthly">$0</span><small data-i18n="card.mo">/mo</small></div>
+            <div class="calc-break">
+              <span><small data-i18n="fin.financed">Amount financed</small><b id="cFinanced">$0</b></span>
+              <span><small data-i18n="fin.interest">Total interest</small><b id="cInterest">$0</b></span>
+            </div>
+            <div class="calc-bar" aria-hidden="true"><i id="cBarP"></i><i id="cBarI"></i></div>
+          </div>
+          <p class="fine" data-i18n="fin.disclaimer">Estimate for illustration only. Excludes taxes, title, registration and dealer fees. Rates subject to credit approval.</p>
+        </form>
+      </div>
+    </section>
+
+    <!-- ============ TRADE-IN ============ -->
+    <section class="section trade" id="trade">
+      <div class="container trade-grid">
+        <div class="trade-copy reveal">
+          <p class="eyebrow" data-i18n="trade.eyebrow">Trade-in</p>
+          <h2 class="section-title" data-i18n="trade.title">Get a real offer in minutes.</h2>
+          <p class="lead" data-i18n="trade.lead">Tell us about your car and a Novara appraiser will send you a firm, no-haggle offer — good for 7 days.</p>
+          <ol class="steps">
+            <li><b>01</b><div><h3 data-i18n="trade.s1t">Describe it</h3><p data-i18n="trade.s1">Year, make, model and mileage.</p></div></li>
+            <li><b>02</b><div><h3 data-i18n="trade.s2t">Get your offer</h3><p data-i18n="trade.s2">A real number from a real appraiser.</p></div></li>
+            <li><b>03</b><div><h3 data-i18n="trade.s3t">Drop it off</h3><p data-i18n="trade.s3">Or we pick it up. Paid on the spot.</p></div></li>
+          </ol>
+        </div>
+        <form class="card form trade-form reveal" data-form="trade" novalidate>
+          <div class="form-grid">
+            <label><span data-i18n="trade.year">Year</span><input name="year" inputmode="numeric" placeholder="2021" required pattern="(19|20)\d{2}"></label>
+            <label><span data-i18n="trade.make">Make</span><input name="make" placeholder="Toyota" required></label>
+            <label><span data-i18n="trade.model">Model</span><input name="model" placeholder="RAV4 XLE" required></label>
+            <label><span data-i18n="trade.miles">Mileage</span><input name="miles" inputmode="numeric" placeholder="42,000" required></label>
+            <fieldset class="span-2"><legend data-i18n="trade.cond">Condition</legend>
+              <div class="seg cond-seg">
+                <label><input type="radio" name="cond" value="excellent"><span data-i18n="trade.c1">Excellent</span></label>
+                <label><input type="radio" name="cond" value="good" checked><span data-i18n="trade.c2">Good</span></label>
+                <label><input type="radio" name="cond" value="fair"><span data-i18n="trade.c3">Fair</span></label>
+              </div>
+            </fieldset>
+            <label><span data-i18n="trade.name">Full name</span><input name="name" autocomplete="name" required></label>
+            <label><span data-i18n="trade.contact">Phone or email</span><input name="contact" autocomplete="email" required></label>
+          </div>
+          <button class="btn btn-primary btn-block" type="submit"><span data-i18n="trade.submit">Get my offer</span><svg class="i"><use href="#i-arrow"/></svg></button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ============ WHY ============ -->
+    <section class="section why" id="why">
+      <div class="why-media only-immersive" aria-hidden="true"><img src="img/showroom.webp" alt="" loading="lazy"></div>
+      <div class="container">
+        <header class="section-head reveal">
+          <p class="eyebrow" data-i18n="why.eyebrow">Why Novara</p>
+          <h2 class="section-title" data-i18n="why.title">Buying a car should feel this good.</h2>
+        </header>
+        <div class="feature-grid">
+          <article class="feature card reveal"><span class="f-icon"><svg class="i"><use href="#i-shield"/></svg></span><h3 data-i18n="why.f1t">Certified to the bolt</h3><p data-i18n="why.f1">Every pre-owned vehicle passes a 172-point inspection and comes with a free history report.</p></article>
+          <article class="feature card reveal"><span class="f-icon"><svg class="i"><use href="#i-tag"/></svg></span><h3 data-i18n="why.f2t">One honest price</h3><p data-i18n="why.f2">The price you see online is the price you pay. No add-ons, no games.</p></article>
+          <article class="feature card reveal"><span class="f-icon"><svg class="i"><use href="#i-truck"/></svg></span><h3 data-i18n="why.f3t">Delivered to your door</h3><p data-i18n="why.f3">Buy online, sign digitally and get your car delivered anywhere in Florida.</p></article>
+          <article class="feature card reveal"><span class="f-icon"><svg class="i"><use href="#i-wrench"/></svg></span><h3 data-i18n="why.f4t">Factory-trained service</h3><p data-i18n="why.f4">Loaner cars, Saturday hours and technicians certified on every brand we sell.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ REVIEWS (replace with real customer reviews) ============ -->
+    <section class="section reviews" id="reviews">
+      <div class="container">
+        <header class="section-head reveal">
+          <p class="eyebrow" data-i18n="rev.eyebrow">Driver stories</p>
+          <h2 class="section-title" data-i18n="rev.title">What our customers say.</h2>
+        </header>
+        <div class="review-grid">
+          <figure class="review card reveal">
+            <div class="stars" aria-label="5 out of 5">★★★★★</div>
+            <blockquote data-i18n="rev.r1">They had the exact truck I wanted, the price online matched the paperwork and I was out in under two hours.</blockquote>
+            <figcaption><span class="avatar">MR</span><span><b>Marcus R.</b><small>Kestrel Summit 4x4</small></span></figcaption>
+          </figure>
+          <figure class="review card reveal">
+            <div class="stars" aria-label="5 out of 5">★★★★★</div>
+            <blockquote data-i18n="rev.r2">First EV for our family. They walked us through charging, incentives and even set up the wall charger.</blockquote>
+            <figcaption><span class="avatar">AL</span><span><b>Ana &amp; Luis G.</b><small>Lumen Aero</small></span></figcaption>
+          </figure>
+          <figure class="review card reveal">
+            <div class="stars" aria-label="5 out of 5">★★★★★</div>
+            <blockquote data-i18n="rev.r3">Traded my coupe and financed the Regent the same afternoon. Easiest car purchase I have ever made.</blockquote>
+            <figcaption><span class="avatar">JT</span><span><b>Jordan T.</b><small>Halden Regent</small></span></figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ VISIT ============ -->
+    <section class="section visit" id="visit">
+      <div class="container">
+        <header class="section-head reveal">
+          <p class="eyebrow" data-i18n="visit.eyebrow">Visit the showroom</p>
+          <h2 class="section-title" data-i18n="visit.title">Come see them in person.</h2>
+        </header>
+        <div class="visit-grid">
+          <div class="visit-info card reveal">
+            <div class="map" aria-hidden="true">
+              <svg viewBox="0 0 400 220" preserveAspectRatio="xMidYMid slice">
+                <rect width="400" height="220" class="m-bg"/>
+                <path class="m-water" d="M300 0h100v220H250c30-40 20-80 40-120 10-30 0-60 10-100Z"/>
+                <g class="m-roads">
+                  <path d="M0 60h290M0 150h260M70 0v220M170 0v220M240 0v220"/>
+                  <path class="m-major" d="M0 110h275M120 0v220"/>
+                  <path class="m-diag" d="M0 210 210 0"/>
+                </g>
+                <g class="m-blocks"><rect x="80" y="70" width="30" height="30" rx="3"/><rect x="180" y="70" width="50" height="30" rx="3"/><rect x="20" y="160" width="40" height="40" rx="3"/><rect x="180" y="160" width="50" height="45" rx="3"/><rect x="130" y="120" width="30" height="20" rx="3"/></g>
+                <g class="m-pin" transform="translate(145 92)"><circle r="18" class="m-pulse"/><path d="M0 8c-7-9-11-14-11-19a11 11 0 0 1 22 0c0 5-4 10-11 19Z"/><circle cy="-11" r="4" class="m-pin-dot"/></g>
+              </svg>
+            </div>
+            <div class="visit-body">
+              <h3>Novara Motors</h3>
+              <p class="addr">1200 Novara Way<br>Miami, FL 33137</p>
+              <a class="phone" href="tel:+13055550199">(305) 555-0199</a>
+              <h4 data-i18n="visit.hours">Showroom hours</h4>
+              <dl class="hours">
+                <div><dt data-i18n="visit.mf">Mon – Fri</dt><dd>9:00 AM – 8:00 PM</dd></div>
+                <div><dt data-i18n="visit.sat">Saturday</dt><dd>9:00 AM – 6:00 PM</dd></div>
+                <div><dt data-i18n="visit.sun">Sunday</dt><dd data-i18n="visit.closed">Closed</dd></div>
+              </dl>
+              <div class="visit-actions">
+                <a class="btn btn-primary btn-sm" href="https://www.google.com/maps/search/?api=1&query=Miami%2C%20FL%2033137" target="_blank" rel="noopener"><svg class="i"><use href="#i-pin"/></svg><span data-i18n="visit.dir">Get directions</span></a>
+                <a class="btn btn-ghost btn-sm" href="tel:+13055550199"><svg class="i"><use href="#i-phone"/></svg><span data-i18n="visit.call">Call us</span></a>
+              </div>
+            </div>
+          </div>
+
+          <form class="card form testdrive-form reveal" data-form="testdrive" id="testDriveForm" novalidate>
+            <h3 data-i18n="form.title">Schedule a test drive</h3>
+            <p class="muted" data-i18n="form.lead">Pick a vehicle and a time. We will have it charged, fueled and waiting.</p>
+            <div class="form-grid">
+              <label class="span-2"><span data-i18n="form.vehicle">Vehicle</span><select name="vehicle" id="tdVehicle"></select></label>
+              <label><span data-i18n="form.name">Full name</span><input name="name" autocomplete="name" required></label>
+              <label><span data-i18n="form.phone">Phone</span><input name="phone" type="tel" autocomplete="tel" required></label>
+              <label class="span-2"><span data-i18n="form.email">Email</span><input name="email" type="email" autocomplete="email" required></label>
+              <label><span data-i18n="form.date">Preferred date</span><input name="date" type="date" id="tdDate" required></label>
+              <label><span data-i18n="form.time">Time</span>
+                <select name="time"><option>10:00 AM</option><option>11:30 AM</option><option>1:00 PM</option><option>2:30 PM</option><option>4:00 PM</option><option>5:30 PM</option></select>
+              </label>
+              <label class="span-2"><span data-i18n="form.msg">Anything we should know?</span><textarea name="msg" rows="3"></textarea></label>
+            </div>
+            <button class="btn btn-primary btn-block" type="submit"><span data-i18n="form.submit">Request test drive</span><svg class="i"><use href="#i-arrow"/></svg></button>
+            <p class="fine" data-i18n="form.consent">By submitting you agree to be contacted by Novara Motors about your request.</p>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <div class="footer-word" aria-hidden="true">NOVARA</div>
+    <div class="container footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="#top" aria-label="Novara Motors">
+          <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 2 38 20 20 38 2 20Z" fill="none" stroke="url(#bm)" stroke-width="2.4"/><path d="M13 27V13l14 14V13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="brand-word">NOVARA<small>MOTORS</small></span>
+        </a>
+        <p data-i18n="footer.tag">New, certified and electric vehicles in Miami, Florida.</p>
+        <div class="socials">
+          <a href="#" aria-label="Instagram"><svg class="i"><use href="#i-ig"/></svg></a>
+          <a href="#" aria-label="Facebook"><svg class="i"><use href="#i-fb"/></svg></a>
+          <a href="#" aria-label="YouTube"><svg class="i"><use href="#i-yt"/></svg></a>
+          <a href="#" aria-label="TikTok"><svg class="i"><use href="#i-tt"/></svg></a>
+        </div>
+      </div>
+      <nav aria-label="Shop"><h4 data-i18n="footer.shop">Shop</h4>
+        <a href="#inventory" data-cat-link="suv" data-i18n="cat.suv">SUVs</a><a href="#inventory" data-cat-link="truck" data-i18n="cat.truck">Trucks</a><a href="#inventory" data-cat-link="electric" data-i18n="cat.electric">Electric</a><a href="#finance" data-i18n="nav.finance">Financing</a>
+      </nav>
+      <nav aria-label="Owners"><h4 data-i18n="footer.owners">Owners</h4>
+        <a href="#visit" data-i18n="footer.service">Schedule service</a><a href="#visit" data-i18n="footer.parts">Parts &amp; accessories</a><a href="#why" data-i18n="footer.warranty">Warranty</a><a href="#trade" data-i18n="nav.trade">Trade-In</a>
+      </nav>
+      <nav aria-label="Dealership"><h4 data-i18n="footer.company">Dealership</h4>
+        <a href="#why" data-i18n="footer.about">About us</a><a href="#" data-i18n="footer.careers">Careers</a><a href="#visit" data-i18n="footer.contact">Contact</a><a href="tel:+13055550199">(305) 555-0199</a>
+      </nav>
+    </div>
+    <div class="container footer-legal">
+      <p data-i18n="footer.legal">Prices exclude tax, title, license, registration and dealer fees. Vehicle images are digital renderings; actual vehicles may vary. All offers subject to credit approval and availability.</p>
+      <div class="footer-bottom">
+        <span>© <span id="year">2026</span> Novara Motors. <span data-i18n="footer.rights">All rights reserved.</span></span>
+        <span class="footer-links"><a href="#" data-i18n="footer.privacy">Privacy</a><a href="#" data-i18n="footer.terms">Terms</a><a href="#" data-i18n="footer.access">Accessibility</a></span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ============ VEHICLE MODAL ============ -->
+  <div class="modal" id="vehicleModal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+      <button type="button" class="modal-close icon-btn" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>
+      <div class="m-grid">
+        <div class="m-media">
+          <div class="m-stage" id="mStage">
+            <img id="mImg" alt="">
+            <canvas id="mCanvas" hidden></canvas>
+            <div class="m-loading" id="mLoading" hidden><span class="spinner"></span><span data-i18n="modal.loading3d">Loading 3D model…</span></div>
+            <p class="m-hint" id="mHint" hidden data-i18n="modal.drag">Drag to rotate · scroll to zoom</p>
+          </div>
+          <div class="m-thumbs" id="mThumbs" role="tablist"></div>
+        </div>
+        <div class="m-info">
+          <p class="m-kicker" id="mKicker"></p>
+          <h3 id="mTitle"></h3>
+          <p class="m-trim" id="mTrim"></p>
+          <div class="m-price"><strong id="mPrice"></strong><s id="mMsrp"></s><span id="mMonthly"></span></div>
+          <dl class="m-specs" id="mSpecs"></dl>
+          <p class="m-desc" id="mDesc"></p>
+          <div class="m-actions">
+            <button type="button" class="btn btn-primary" id="mTestDrive"><span data-i18n="modal.testdrive">Schedule test drive</span><svg class="i"><use href="#i-arrow"/></svg></button>
+            <button type="button" class="btn btn-ghost" id="mPayment"><span data-i18n="modal.payment">Estimate payment</span></button>
+            <button type="button" class="icon-btn m-fav" id="mFav" aria-label="Save"><svg class="i"><use href="#i-heart"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- ============ ICON SPRITE ============ -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-9.2-9A5 5 0 0 1 12 6a5 5 0 0 1 9.2 5C19 15.6 12 20 12 20Z"/></symbol>
+    <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 2 21 7v10l-9 5-9-5V7Z"/><path d="M3 7l9 5 9-5M12 12v10"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12Z"/><circle cx="12" cy="9" r="2.5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A17 17 0 0 1 3 5a2 2 0 0 1 2-2Z"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4Z"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7Z"/></symbol>
+    <symbol id="i-truck" viewBox="0 0 24 24"><path d="M2 6h12v10H2zM14 10h4l3 3v3h-7"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8Z"/><circle cx="7.5" cy="8.5" r="1.5"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.5-1.5a4 4 0 0 1-5-5L14 2Z" transform="rotate(0)"/><path d="M3 21l6-6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3 12a9 4 0 0 0 18 0 9 4 0 0 0-14-3.3"/><path d="m6 5-1 4 4 .5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/></symbol>
+    <symbol id="i-road" viewBox="0 0 24 24"><path d="M8 3 4 21M16 3l4 18M12 4v3M12 11v3M12 18v3"/></symbol>
+    <symbol id="i-fuel" viewBox="0 0 24 24"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h12M14 9h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V8l-3-3"/><path d="M7 7h4"/></symbol>
+    <symbol id="i-drive" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M3.5 10h6M14.5 10h6M12 14.5V21"/></symbol>
+    <symbol id="i-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></symbol>
+    <symbol id="i-ig" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/></symbol>
+    <symbol id="i-fb" viewBox="0 0 24 24"><path d="M14 8h3V4h-3a4 4 0 0 0-4 4v3H7v4h3v6h4v-6h3l1-4h-4V8Z"/></symbol>
+    <symbol id="i-yt" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3Z"/></symbol>
+    <symbol id="i-tt" viewBox="0 0 24 24"><path d="M14 3v11.5a3.5 3.5 0 1 1-3.5-3.5M14 3c.5 3 2.5 5 6 5"/></symbol>
+  </svg>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
