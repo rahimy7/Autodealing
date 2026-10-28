@@ -17,7 +17,7 @@
 	}
 
 	# HTML/CSS/JS sin hash en el nombre: siempre revalidar (ETag) para que un deploy se vea al instante
-	@code path / *.html *.css *.js *.json
+	@code path / *.html *.css *.js
 	header @code Cache-Control "no-cache"
 
 	# imágenes: 1 día (si reemplazas una foto con el mismo nombre se actualiza en <24 h)

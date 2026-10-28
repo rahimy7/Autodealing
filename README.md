@@ -1,52 +1,77 @@
-# Premier Line Motors
+# Premier Line Motors — sitio de ventas para dealer (USA)
 
-Personalización del proyecto Novara-Motors para **Premier Line Motors**, según el formulario enviado en RVR el 27 de octubre de 2026.
+Sitio de concesionario con **dos vistas** que comparten el mismo contenido:
 
-## Entrega actual
+| Vista | Qué incluye |
+| --- | --- |
+| **Inmersiva** (por defecto) | Showroom 3D en vivo (Three.js) con piso espejo, anillos de neón, bloom y partículas · configurador de modelo y pintura · tarjetas con inclinación 3D · giro 360° controlado por scroll · cursor personalizado, marquesina, contadores animados |
+| **Clásica** | Diseño de dealer tradicional: barra superior con teléfono/horario, buscador en el hero, filtros en barra lateral, vista cuadrícula/lista, colores navy + rojo |
 
-- Diseño adaptable negro, dorado y plateado con el logo original.
-- Contenido en inglés y español; recuerda el idioma en el navegador.
-- Datos: 623–625 River Street, Paterson, NJ 07524; 201-625-0077; info@premierlinemotors.com.
-- Contacto por teléfono, email, mapas y WhatsApp. El formulario prepara un mensaje; el visitante lo revisa y envía desde WhatsApp. Abrir WhatsApp no significa que una consulta fue recibida.
-- Financiamiento descrito según RVR: entidades financieras y programas Buy Here Pay Here, sujeto a evaluación y aprobación. No se anuncian cuotas ni aprobaciones garantizadas.
-- Catálogo preparado para vehículos reales, con búsqueda, filtro por carrocería y orden de precio/año. Sin inventario ficticio, reseñas inventadas ni horarios sin confirmar.
-- Aviso de privacidad accesible desde el pie de página.
+El botón **Immersive / Classic** del menú cambia de vista (se recuerda en el navegador). El botón **ES/EN** cambia el idioma (inglés por defecto, detecta español automáticamente).
 
-## Vista previa
+## Imágenes generadas
+No hay fotos de stock ni modelos descargados: **todos los vehículos se generan por código** (`js/car-factory.js`) — 8 carrocerías (coupé, superdeportivo, sedán, SUV, SUV 3 filas, pickup, crossover eléctrico, hatchback) con faros LED, parrillas, rines, cálipers, espejos, manijas y líneas de puertas.
 
-```sh
-python3 -m http.server 5179 --bind 127.0.0.1
+Con esos modelos se renderizan las fotos del sitio (`img/`):
+- `img/cars/<id>-front|side|rear.webp` — 3 ángulos por vehículo, fondo transparente
+- `img/spin/valtor-spectre/00–35.webp` — secuencia 360° del "vehículo del mes"
+- `img/hero-classic.webp` — imagen principal de la vista clásica
+- `img/showroom.webp` — escena de showroom (fondo de "Why Premier")
+
+Los mismos modelos se usan en vivo en el hero 3D y en el visor **360° 3D** de cada vehículo (pestaña "360° 3D" dentro del detalle).
+
+## Ejecutar en local
+```bash
+python3 tools/devserver.py
+```
+Abrir http://localhost:5179 (los módulos ES requieren servidor; no funciona con doble clic en `index.html`).
+
+## Publicar en Railway
+El sitio se sirve con **Caddy** dentro de un contenedor (`Dockerfile` + `Caddyfile`); `railway.json` le dice a Railway que use ese Dockerfile y que revise `/` como health check. Solo se publican `index.html`, `css/`, `js/` e `img/`: `tools/` (incluido el endpoint de guardado de `devserver.py`) y el README **no** van a producción.
+
+**Opción A — desde GitHub (redeploy automático en cada push)**
+1. Sube la carpeta a un repo de GitHub.
+2. En Railway: *New Project → Deploy from GitHub repo* → elige el repo.
+3. En el servicio: *Settings → Networking → Generate Domain* (o *Custom Domain* para tu dominio).
+
+**Opción B — desde la terminal**
+```bash
+npm i -g @railway/cli
+railway login
+railway init        # crea el proyecto
+railway up          # sube y despliega esta carpeta
+railway domain      # genera la URL pública
 ```
 
-Abrir http://127.0.0.1:5179.
+No hace falta configurar variables: Railway asigna `PORT` y Caddy la lee sola. HTML, CSS y JS se revalidan en cada visita (un deploy se ve al instante); las imágenes se cachean 1 día.
 
-## Inventario real
+## Cambiar inventario / regenerar fotos
+1. Edita `js/data.js` (precio, millaje, specs, textos EN/ES y `config` 3D: `type`, `color`, `rim`, `rimFinish`, `caliper`, `roofColor`, `finish: 'matte'`, `grille: 'chrome'`…).
+2. Con el servidor corriendo abre http://localhost:5179/tools/render.html — guarda todas las imágenes en `img/`.
+   - Solo autos: `?only=cars` · un vehículo: `?only=cars&id=valtor-gt` · secuencia 360°: `?only=spin`
+3. Para usar fotos reales del lote, reemplaza los archivos `img/cars/<id>-front|side|rear.webp` con el mismo nombre.
 
-`data/inventory.json` contiene una lista vacía hasta recibir los datos del concesionario. Cada vehículo debe incluir:
+## Pendiente para producción
+- **Formularios** (prueba de manejo, intercambio): hoy validan y muestran confirmación; conectar a tu CRM/DMS en `bindForms()` de `js/app.js` (hay un comentario con el `fetch`).
+- **Reseñas**: los testimonios son de ejemplo — reemplázalos por reseñas reales de clientes.
+- Datos del dealer (nombre, dirección, teléfono, horario, redes) son de ejemplo (`index.html`, `js/data.js`). Los teléfonos 555-01xx son ficticios.
+- Revisa los textos legales del pie de página con tu cumplimiento (FTC / Florida).
 
-- `id`: identificador estable de stock, string.
-- `year`, `make`, `model`: año entero, marca y modelo.
-- `price`, `miles`: números no negativos, USD y millas.
-- `body`: carrocería (opcional).
-- `photos`: lista de rutas `img/...` o enlaces HTTPS a fotografías reales.
-
-El visitante puede consultar cada unidad por WhatsApp. No hay sincronización con DealerCenter/Autofunds todavía: se necesita el feed o acceso autorizado del concesionario, confirmar su formato e implementar su importación. No introducir credenciales en archivos públicos.
-
-Si se agregan fotos locales, actualizar el Dockerfile para incluirlas. Actualmente solo copia los recursos realmente utilizados y excluye el catálogo de demostración anterior.
-
-## Railway
-
-`Dockerfile` y `railway.json` sirven el sitio mediante Caddy en el puerto asignado por Railway. Health check: `/`. No necesita secretos ni base de datos para esta entrega. Nunca desplegar el archivo `.env` de RVR.
-
-Desde una sesión o token de Railway válido, seleccionar el servicio exclusivo de Premier Line Motors y ejecutar `railway up`, seguido de la generación del dominio si no existe. No reemplazar otros servicios de RVR.
-
-## Pendientes externos
-
-- Publicación mediante el servicio existente Autodealing, conectado a `rahimy7/Autodealing`, rama `main`. Dominio de Railway: https://autodealing-production.up.railway.app. La integración de Railway en RVR requiere revisar su token por separado; no se modificó para publicar este sitio.
-- Inventario real y fotografías o feed autorizado.
-- Confirmar el número de WhatsApp del concesionario: por ahora se usa el teléfono de contacto facilitado en RVR.
-- Horario comercial, enlaces exactos a redes y dominio definitivo.
-
-No se creó ni modificó una base de Neon. Al conectar una gestión de inventario o seguimiento de consultas, definir una base aislada para este cliente y controles de acceso.
-
-Los módulos 3D y activos del prototipo original permanecen en el repositorio, fuera de la imagen publicada, para futuras decisiones de diseño.
+## Estructura
+```
+index.html          página única (ambas vistas)
+css/styles.css      tokens de diseño + estilos inmersivo / clásico
+js/app.js           UI: inventario, filtros, modal, calculadora, formularios, idioma, vistas
+js/data.js          inventario, modelos del showroom 3D, categorías
+js/i18n.js          textos EN / ES
+js/car-factory.js   generador procedural de vehículos 3D
+js/studio.js        iluminación de estudio, sombras de contacto, encuadre de cámara
+js/hero3d.js        escena 3D del hero (inmersiva)
+js/viewer3d.js      visor 360° del modal
+tools/render.html   genera las fotos del sitio
+tools/lab.html      laboratorio para ajustar carrocerías
+tools/devserver.py  servidor local (+ guarda los renders)
+Dockerfile          imagen de producción (Caddy + archivos públicos)
+Caddyfile           servidor de producción: puerto, compresión, caché, cabeceras
+railway.json        configuración de build/deploy en Railway
+```

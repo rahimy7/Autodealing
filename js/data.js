@@ -2,12 +2,12 @@
 // `config` drives both the generated photos (tools/render.html) and the live 3D viewer.
 
 export const DEALER = {
-  name: 'Novara Motors',
-  phone: '(305) 555-0199',
-  phoneHref: 'tel:+13055550199',
-  email: 'sales@novaramotors.example',
-  address: '1200 Novara Way, Miami, FL 33137',
-  mapsQuery: 'Miami, FL 33137',
+  name: 'Premier Line Motors',
+  phone: '(201) 625-0077',
+  phoneHref: 'tel:+12016250077',
+  email: 'info@premierlinemotors.com',
+  address: '623–625 River Street, Paterson, NJ 07524',
+  mapsQuery: '623–625 River Street, Paterson, NJ 07524',
 };
 
 export const INVENTORY = [
