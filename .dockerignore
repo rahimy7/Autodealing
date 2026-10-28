@@ -3,3 +3,7 @@
 tools
 README.md
 railway.json
+
+.env
+.env.*
+node_modules
