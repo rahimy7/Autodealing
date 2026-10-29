@@ -147,3 +147,6 @@ export const STRINGS = {
     'footer.rights': 'Todos los derechos reservados.', 'footer.privacy': 'Privacidad', 'footer.terms': 'Términos', 'footer.access': 'Accesibilidad',
   },
 };
+
+// Editable wording; the original dealer markup and layout stay intact.
+try {const r=await fetch('/api/content',{cache:'no-store'});if(r.ok){const content=await r.json();for(const lang of ['en','es'])for(const [key,value] of Object.entries(content[lang]||{})){if(typeof STRINGS[lang][key]==='string'&&typeof value==='string')STRINGS[lang][key]=value;}}}catch{}

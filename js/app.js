@@ -1,4 +1,4 @@
-import { INVENTORY, SHOWROOM, CATEGORIES, SPOTLIGHT } from './data.js';
+import { INVENTORY, INVENTORY_ERROR, DEALER, SHOWCASE, SHOWROOM, CATEGORIES, SPOTLIGHT } from './data.js';
 import { STRINGS } from './i18n.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -22,9 +22,10 @@ const state = {
   paint: 0,
 };
 
-const byId = Object.fromEntries(INVENTORY.map((v) => [v.id, v]));
+const byId = Object.fromEntries([...SHOWCASE, ...INVENTORY].map((v) => [v.id, v]));
 const t = (key, vars) => {
   let s = STRINGS[state.lang][key] ?? STRINGS.en[key] ?? key;
+  if(typeof s==='string') s=s.replace(/Premier Line Motors|Premier/g,match=>match==='Premier'?DEALER.name.split(' ')[0]:DEALER.name);
   if (vars && typeof s === 'string') for (const k in vars) s = s.replace(`{${k}}`, vars[k]);
   return s;
 };
@@ -38,7 +39,13 @@ const payment = (principal, apr, months) => {
 };
 const estMonthly = (price) => payment(price * 0.9, 6.9, 72);
 const title = (v) => `${v.year} ${v.make} ${v.model}`;
-const img = (id, angle = 'front') => `img/cars/${id}-${angle}.webp`;
+const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const escaped = value => Array.isArray(value) ? value.map(escaped) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k,v])=>[k,escaped(v)])) : typeof value === 'string' ? escapeHTML(value) : value;
+const img = (id, angle = 'front') => {
+  const v = byId[id];
+  if (v?.live) { const n = typeof angle === 'number' ? angle : ({front:0,side:1,rear:2}[angle] ?? 0); return v.photos[n] || v.photos[0] || '/img/vehicle-placeholder.svg'; }
+  return `img/cars/${id}-${angle}.webp`;
+};
 
 // ============================================================ i18n
 function applyI18n() {
@@ -113,8 +120,8 @@ function fillSelects() {
   const keepType = $('#hcType').value, keepMake = $('#hcMake').value, keepTd = $('#tdVehicle').value;
   $('#hcType').innerHTML = `<option value="all">${t('hc.any')}</option>` + CATEGORIES.map((c) => `<option value="${c.id}">${t('cat.' + c.id)}</option>`).join('');
   const makes = [...new Set(INVENTORY.map((v) => v.make))].sort();
-  $('#hcMake').innerHTML = `<option value="">${t('hc.any')}</option>` + makes.map((m) => `<option>${m}</option>`).join('');
-  $('#tdVehicle').innerHTML = `<option value="">${t('form.any')}</option>` + INVENTORY.map((v) => `<option value="${v.id}">${title(v)}</option>`).join('');
+  $('#hcMake').innerHTML = `<option value="">${t('hc.any')}</option>` + makes.map((m) => `<option>${escapeHTML(m)}</option>`).join('');
+  $('#tdVehicle').innerHTML = `<option value="">${t('form.any')}</option>` + INVENTORY.map((v) => `<option value="${v.id}">${escapeHTML(title(v))}</option>`).join('');
   if (keepType) $('#hcType').value = keepType;
   if (keepMake) $('#hcMake').value = keepMake;
   if (keepTd) $('#tdVehicle').value = keepTd;
@@ -146,9 +153,12 @@ function filtered() {
 }
 
 function cardHTML(v, i) {
+  v = escaped(v);
   const drop = v.msrp - v.price;
   const fuelIcon = v.fuel === 'electric' ? 'i-bolt' : 'i-fuel';
   const badges = [`<span class="badge ${v.condition}">${t('cond.' + v.condition)}</span>`];
+  if (v.demo) badges.push(`<span class="badge">${state.lang==='es'?'Demo':'Demo'}</span>`);
+  if (v.status==='reserved') badges.push(`<span class="badge">${state.lang==='es'?'Reservado':'Reserved'}</span>`);
   if (drop > 0) badges.push(`<span class="badge drop">−${usd(drop)}</span>`);
   return `
   <article class="car-card entering" data-id="${v.id}" style="--i:${i}">
@@ -186,6 +196,7 @@ function renderInventory() {
   grid.classList.toggle('list', state.layout === 'list');
   grid.innerHTML = list.map(cardHTML).join('');
   $('#invEmpty').hidden = list.length > 0;
+  if (INVENTORY_ERROR) $('#invEmpty').textContent = state.lang === 'es' ? 'No se pudo cargar el inventario. Recarga la página o contáctanos.' : 'Inventory is temporarily unavailable. Reload or contact us.';
   updateCount(list.length);
   requestAnimationFrame(() => {
     $$('.car-card', grid).forEach((c, i) => setTimeout(() => c.classList.remove('entering'), reducedMotion ? 0 : 60 * Math.min(i, 8)));
@@ -290,19 +301,20 @@ function fillModal(v, keepTab = false) {
   $('#mMsrp').textContent = v.msrp > v.price ? `${t('card.msrp')} ${usd(v.msrp)}` : '';
   $('#mMonthly').textContent = `${t('card.est')} ${usd(estMonthly(v.price))}${t('card.mo')}`;
   const specs = [
-    ['modal.engine', v.engine], ['modal.power', `${v.hp} hp`], ['modal.drive', v.drive], ['modal.trans', L(v.trans)],
+    ['modal.engine', v.engine], ['modal.power', v.hp ? `${v.hp} hp` : '—'], ['modal.drive', v.drive], ['modal.trans', L(v.trans)],
     ['modal.economy', v.economy], ['modal.zero60', `${v.zero60} s`], ['modal.miles', `${num(v.miles)} mi`], ['modal.seats', v.seats],
     ['modal.ext', L(v.ext)], ['modal.int', L(v.int)],
   ];
+  if (!v.zero60) specs.splice(specs.findIndex(([key]) => key === 'modal.zero60'), 1);
   if (v.towing) specs.splice(6, 0, ['modal.tow', v.towing]);
   specs.push(['modal.vin', v.vin]);
-  $('#mSpecs').innerHTML = specs.map(([k, val]) => `<div><dt>${t(k)}</dt><dd>${val}</dd></div>`).join('');
+  $('#mSpecs').innerHTML = specs.map(([k, val]) => `<div><dt>${t(k)}</dt><dd>${escapeHTML(val)}</dd></div>`).join('');
   $('#mDesc').textContent = L(v.desc);
   $('#mFav').setAttribute('aria-pressed', state.favs.has(v.id));
-  const tabs = ['front', 'side', 'rear'];
-  $('#mThumbs').innerHTML = tabs.map((a) => `<button type="button" role="tab" data-tab="${a}" aria-selected="false" aria-label="${t('modal.gallery')} ${a}"><img src="${img(v.id, a)}" alt=""></button>`).join('')
-    + `<button type="button" role="tab" class="t3d" data-tab="3d" aria-selected="false"><span>360°<small>${t('modal.3d')}</small></span></button>`;
-  showTab(keepTab ? modalTab : 'front');
+  const tabs = v.live ? (v.photos.length ? v.photos.map((_, i) => 'photo-' + i) : ['photo-0']) : ['front', 'side', 'rear'];
+  $('#mThumbs').innerHTML = tabs.map((a) => `<button type="button" role="tab" data-tab="${a}" aria-selected="false" aria-label="${t('modal.gallery')} ${a}"><img src="${img(v.id, a.startsWith('photo-') ? Number(a.slice(6)) : a)}" alt=""></button>`).join('')
+    + (v.live ? '' : `<button type="button" role="tab" class="t3d" data-tab="3d" aria-selected="false"><span>360°<small>${t('modal.3d')}</small></span></button>`);
+  showTab(keepTab ? modalTab : (v.live ? 'photo-0' : 'front'));
 }
 
 function showTab(tab) {
@@ -318,7 +330,7 @@ function showTab(tab) {
   } else {
     if (viewer) viewer.hide();
     cv.hidden = true; $('#mHint').hidden = true; $('#mLoading').hidden = true; imgEl.hidden = false;
-    imgEl.src = img(v.id, tab);
+    imgEl.src = img(v.id, tab.startsWith('photo-') ? Number(tab.slice(6)) : tab);
     imgEl.alt = `${title(v)} — ${tab}`;
     imgEl.style.animation = 'none'; void imgEl.offsetWidth; imgEl.style.animation = '';
   }
@@ -420,7 +432,7 @@ function bindCalc() {
     $$('#cTerm [data-term]').forEach((x) => x.setAttribute('aria-pressed', x === b));
     calc();
   });
-  $('#preapproveBtn').addEventListener('click', () => toast(t('toast.preapproved')));
+  $('#preapproveBtn').addEventListener('click', () => { document.getElementById('visit').scrollIntoView({behavior:reducedMotion?'auto':'smooth'}); document.querySelector('#testDriveForm textarea').value = state.lang==='es'?'Me gustaría recibir información sobre financiamiento.':'I would like information about financing.'; });
   calc();
 }
 
@@ -438,13 +450,13 @@ function bindForms() {
       if (!ok) return;
       const btn = $('button[type=submit]', form);
       btn.disabled = true;
-      // Replace with fetch('/api/leads', { method: 'POST', body: new FormData(form) })
-      setTimeout(() => {
-        btn.disabled = false;
-        form.reset();
-        $$('[aria-invalid]', form).forEach((x) => x.removeAttribute('aria-invalid'));
-        toast(t(form.dataset.form === 'trade' ? 'toast.trade' : 'toast.testdrive'));
-      }, 650);
+      const body = Object.fromEntries(new FormData(form));
+      body.kind = form.dataset.form;
+      fetch('/api/leads', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+        .then(async r=>{const data=await r.json();if(!r.ok)throw new Error(data.error||'No se pudo enviar.');return data;})
+        .then(()=>{form.reset();$$('[aria-invalid]',form).forEach(x=>x.removeAttribute('aria-invalid'));toast(state.lang==='es'?'Solicitud recibida. Nuestro equipo te contactará para confirmar.':'Request received. Our team will contact you to confirm.');})
+        .catch(()=>toast(state.lang==='es'?'No se pudo enviar. Inténtalo de nuevo o llámanos.':'Could not send your request. Try again or call us.'))
+        .finally(()=>{btn.disabled=false;});
     });
     form.addEventListener('input', (e) => { if (e.target.getAttribute('aria-invalid') === 'true' && e.target.value.trim()) e.target.removeAttribute('aria-invalid'); });
   });

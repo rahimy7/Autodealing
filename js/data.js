@@ -10,7 +10,7 @@ export const DEALER = {
   mapsQuery: '623–625 River Street, Paterson, NJ 07524',
 };
 
-export const INVENTORY = [
+export const SHOWCASE = [
   {
     id: 'valtor-gt', year: 2025, make: 'Valtor', model: 'GT Coupe', trim: 'Launch Edition',
     cats: ['coupe'], condition: 'certified', price: 68900, msrp: 74500, miles: 1240,
@@ -226,3 +226,11 @@ export const CATEGORIES = [
 ];
 
 export const SPOTLIGHT = { id: 'valtor-spectre', frames: 36 };
+
+// Inventory comes from Neon. Concept vehicles above remain only in the original 3D showcase.
+export let INVENTORY_ERROR = false;
+try { const r=await fetch('/api/site',{cache:'no-store'}); if(r.ok){const d=await r.json();Object.assign(DEALER,{name:d.name,phone:d.phone,phoneHref:'tel:'+d.phoneNumber,email:d.email,address:d.address+', '+d.city});} } catch {}
+export const INVENTORY = await fetch('/api/inventory', {cache:'no-store'})
+  .then(r=>{if(!r.ok)throw new Error('Inventory unavailable');return r.json();})
+  .then(data=>{if(!Array.isArray(data))throw new Error('Invalid inventory');return data;})
+  .catch(()=>{INVENTORY_ERROR=true;return [];});

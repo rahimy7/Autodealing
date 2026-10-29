@@ -1,0 +1,15 @@
+CREATE TABLE IF NOT EXISTS admin_users (id uuid PRIMARY KEY, username text NOT NULL UNIQUE, name text NOT NULL, role text NOT NULL CHECK(role IN ('admin','sales')), password_hash text NOT NULL, active boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS sessions (token_hash text PRIMARY KEY,user_id uuid NOT NULL REFERENCES admin_users(id),csrf text NOT NULL,expires_at timestamptz NOT NULL);
+CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at);
+CREATE TABLE IF NOT EXISTS vehicles (id uuid PRIMARY KEY,stock text NOT NULL,vin text NOT NULL DEFAULT '',status text NOT NULL CHECK(status IN ('draft','available','reserved','sold','archived')),data jsonb NOT NULL,purchase_cost numeric(14,2) NOT NULL DEFAULT 0 CHECK(purchase_cost>=0),version integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
+CREATE UNIQUE INDEX IF NOT EXISTS vehicles_stock ON vehicles(lower(stock));
+CREATE UNIQUE INDEX IF NOT EXISTS vehicles_vin ON vehicles(lower(vin)) WHERE vin<>'';
+CREATE TABLE IF NOT EXISTS vehicle_photos (id uuid PRIMARY KEY,vehicle_id uuid NOT NULL REFERENCES vehicles(id),image bytea NOT NULL,mime text NOT NULL,position integer NOT NULL DEFAULT 0,created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS photos_vehicle ON vehicle_photos(vehicle_id,position,created_at);
+CREATE TABLE IF NOT EXISTS vehicle_expenses (id uuid PRIMARY KEY,vehicle_id uuid NOT NULL REFERENCES vehicles(id),description text NOT NULL,amount numeric(14,2) NOT NULL CHECK(amount>0),expense_date date NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS sales (id uuid PRIMARY KEY,vehicle_id uuid NOT NULL REFERENCES vehicles(id),price numeric(14,2) NOT NULL CHECK(price>0),cost numeric(14,2) NOT NULL CHECK(cost>=0),buyer_name text NOT NULL,buyer_phone text NOT NULL DEFAULT '',buyer_email text NOT NULL DEFAULT '',notes text NOT NULL DEFAULT '',sold_at date NOT NULL,created_by uuid NOT NULL REFERENCES admin_users(id),cancelled_at timestamptz,created_at timestamptz NOT NULL DEFAULT now());
+CREATE UNIQUE INDEX IF NOT EXISTS sales_active_vehicle ON sales(vehicle_id) WHERE cancelled_at IS NULL;
+CREATE TABLE IF NOT EXISTS leads (id uuid PRIMARY KEY,kind text NOT NULL CHECK(kind IN ('testdrive','trade','contact')),name text NOT NULL,phone text NOT NULL DEFAULT '',email text NOT NULL DEFAULT '',vehicle_id uuid REFERENCES vehicles(id),data jsonb NOT NULL,status text NOT NULL DEFAULT 'new' CHECK(status IN ('new','contacted','closed')),created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS settings (id text PRIMARY KEY,value jsonb NOT NULL);
+CREATE TABLE IF NOT EXISTS site_assets (id text PRIMARY KEY,image bytea NOT NULL,mime text NOT NULL,updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS audit_log (id bigserial PRIMARY KEY,user_id uuid REFERENCES admin_users(id),action text NOT NULL,entity_id text,created_at timestamptz NOT NULL DEFAULT now());

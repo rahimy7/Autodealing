@@ -1,77 +1,53 @@
-# Premier Line Motors — sitio de ventas para dealer (USA)
+# Premier Line Motors — sitio de dealer y administración
 
-Sitio de concesionario con **dos vistas** que comparten el mismo contenido:
+El sitio conserva la estructura original de Novara: vistas inmersiva y clásica, showroom 3D, catálogo, filtros, fotografías, detalle y calculadora. El catálogo comercial ahora se obtiene de Neon; los modelos conceptuales del showroom conservan sus recursos originales.
 
-| Vista | Qué incluye |
-| --- | --- |
-| **Inmersiva** (por defecto) | Showroom 3D en vivo (Three.js) con piso espejo, anillos de neón, bloom y partículas · configurador de modelo y pintura · tarjetas con inclinación 3D · giro 360° controlado por scroll · cursor personalizado, marquesina, contadores animados |
-| **Clásica** | Diseño de dealer tradicional: barra superior con teléfono/horario, buscador en el hero, filtros en barra lateral, vista cuadrícula/lista, colores navy + rojo |
+## Panel `/admin/`
 
-El botón **Immersive / Classic** del menú cambia de vista (se recuerda en el navegador). El botón **ES/EN** cambia el idioma (inglés por defecto, detecta español automáticamente).
+- **Resumen:** inventario por estado, consultas pendientes, ventas, ingresos y margen bruto (solo administración).
+- **Inventario:** altas y edición; stock/VIN únicos; borrador, disponible, reservado, vendido y archivado. Descripciones EN/ES, detalles técnicos, precios y destacados.
+- **Fotografías:** 30 por vehículo, portada y orden, carga de JPG/PNG/WEBP hasta 10 MB. Se optimizan a WEBP y se guardan como binarios en la base exclusiva de Neon, nunca en el almacenamiento efímero de Railway.
+- **Costos y gastos:** compra, transporte, reparaciones y acondicionamiento. Privados para administración; se fijan al cerrar una venta.
+- **Ventas:** precio, comprador, contacto, fecha y notas internas. Una venta retira la unidad del catálogo. La anulación conserva el historial y devuelve la unidad a disponible. No ejecuta cobros ni genera contratos.
+- **Consultas:** los formularios públicos guardan solicitudes en Neon, con estados nueva, contactada y cerrada. No se envían correos automáticos.
+- **Página web:** datos comerciales, logo, redes y textos EN/ES de las secciones existentes.
+- **Equipo:** cuentas con roles de administración y ventas; desactivación revoca sus sesiones.
+- **Mi cuenta:** cambio de contraseña e invalidación de otras sesiones.
+- Exportaciones CSV de inventario, ventas y consultas, con protección contra fórmulas.
 
-## Imágenes generadas
-No hay fotos de stock ni modelos descargados: **todos los vehículos se generan por código** (`js/car-factory.js`) — 8 carrocerías (coupé, superdeportivo, sedán, SUV, SUV 3 filas, pickup, crossover eléctrico, hatchback) con faros LED, parrillas, rines, cálipers, espejos, manijas y líneas de puertas.
+Los 12 vehículos originales y sus 36 fotos fueron importados con marca **Demo**, por solicitud del propietario. No pueden registrar ventas hasta que se actualicen con datos reales y se desmarque Demo. Los vehículos, cifras y reseñas del prototipo no son evidencia de operaciones reales. Los textos del prototipo pueden editarse desde Página web.
 
-Con esos modelos se renderizan las fotos del sitio (`img/`):
-- `img/cars/<id>-front|side|rear.webp` — 3 ángulos por vehículo, fondo transparente
-- `img/spin/valtor-spectre/00–35.webp` — secuencia 360° del "vehículo del mes"
-- `img/hero-classic.webp` — imagen principal de la vista clásica
-- `img/showroom.webp` — escena de showroom (fondo de "Why Premier")
+## Acceso inicial
 
-Los mismos modelos se usan en vivo en el hero 3D y en el visor **360° 3D** de cada vehículo (pestaña "360° 3D" dentro del detalle).
+La cuenta `admin` fue creada con una contraseña aleatoria. Su acceso se entrega al propietario en un archivo local privado fuera del repositorio. No hay contraseñas predeterminadas, credenciales en el código ni claves públicas. El administrador puede cambiar la contraseña desde Mi cuenta.
 
-## Ejecutar en local
-```bash
-python3 tools/devserver.py
-```
-Abrir http://localhost:5179 (los módulos ES requieren servidor; no funciona con doble clic en `index.html`).
+## Desarrollo
 
-## Publicar en Railway
-El sitio se sirve con **Caddy** dentro de un contenedor (`Dockerfile` + `Caddyfile`); `railway.json` le dice a Railway que use ese Dockerfile y que revise `/` como health check. Solo se publican `index.html`, `css/`, `js/` e `img/`: `tools/` (incluido el endpoint de guardado de `devserver.py`) y el README **no** van a producción.
+Node.js 24. Instalar con `npm ci`. Configurar una conexión de Neon exclusiva en `DATABASE_URL` (TLS `sslmode=verify-full`). Para una base vacía se necesita `ADMIN_BOOTSTRAP_PASSWORD`; el arranque crea el esquema y la primera cuenta bajo un bloqueo transaccional. Una vez creada, no requiere esa variable y nunca sobrescribe su contraseña al reiniciar.
 
-**Opción A — desde GitHub (redeploy automático en cada push)**
-1. Sube la carpeta a un repo de GitHub.
-2. En Railway: *New Project → Deploy from GitHub repo* → elige el repo.
-3. En el servicio: *Settings → Networking → Generate Domain* (o *Custom Domain* para tu dominio).
-
-**Opción B — desde la terminal**
-```bash
-npm i -g @railway/cli
-railway login
-railway init        # crea el proyecto
-railway up          # sube y despliega esta carpeta
-railway domain      # genera la URL pública
+```sh
+node --env-file=.env server/index.js
 ```
 
-No hace falta configurar variables: Railway asigna `PORT` y Caddy la lee sola. HTML, CSS y JS se revalidan en cada visita (un deploy se ve al instante); las imágenes se cachean 1 día.
+No colocar `.env` en Git. El servidor solo publica `/`, `/admin`, `/css`, `/js`, `/img` y las rutas del API; el código de servidor y archivos de configuración no se sirven.
 
-## Cambiar inventario / regenerar fotos
-1. Edita `js/data.js` (precio, millaje, specs, textos EN/ES y `config` 3D: `type`, `color`, `rim`, `rimFinish`, `caliper`, `roofColor`, `finish: 'matte'`, `grille: 'chrome'`…).
-2. Con el servidor corriendo abre http://localhost:5179/tools/render.html — guarda todas las imágenes en `img/`.
-   - Solo autos: `?only=cars` · un vehículo: `?only=cars&id=valtor-gt` · secuencia 360°: `?only=spin`
-3. Para usar fotos reales del lote, reemplaza los archivos `img/cars/<id>-front|side|rear.webp` con el mismo nombre.
+## Pruebas
 
-## Pendiente para producción
-- **Formularios** (prueba de manejo, intercambio): hoy validan y muestran confirmación; conectar a tu CRM/DMS en `bindForms()` de `js/app.js` (hay un comentario con el `fetch`).
-- **Reseñas**: los testimonios son de ejemplo — reemplázalos por reseñas reales de clientes.
-- Datos del dealer (nombre, dirección, teléfono, horario, redes) son de ejemplo (`index.html`, `js/data.js`). Los teléfonos 555-01xx son ficticios.
-- Revisa los textos legales del pie de página con tu cumplimiento (FTC / Florida).
-
-## Estructura
+```sh
+npm test
 ```
-index.html          página única (ambas vistas)
-css/styles.css      tokens de diseño + estilos inmersivo / clásico
-js/app.js           UI: inventario, filtros, modal, calculadora, formularios, idioma, vistas
-js/data.js          inventario, modelos del showroom 3D, categorías
-js/i18n.js          textos EN / ES
-js/car-factory.js   generador procedural de vehículos 3D
-js/studio.js        iluminación de estudio, sombras de contacto, encuadre de cámara
-js/hero3d.js        escena 3D del hero (inmersiva)
-js/viewer3d.js      visor 360° del modal
-tools/render.html   genera las fotos del sitio
-tools/lab.html      laboratorio para ajustar carrocerías
-tools/devserver.py  servidor local (+ guarda los renders)
-Dockerfile          imagen de producción (Caddy + archivos públicos)
-Caddyfile           servidor de producción: puerto, compresión, caché, cabeceras
-railway.json        configuración de build/deploy en Railway
-```
+
+Con `DATABASE_URL` se ejecuta también la integración real contra un esquema temporal aislado dentro de esa base. La prueba crea y elimina únicamente su esquema `premier_test_*`, sin modificar las tablas de producción. Cubre sesiones, CSRF, roles, aislamiento de costos, fotos privadas, publicación, versiones concurrentes, consultas, dos ventas simultáneas, anulación e historial, bloqueo de demos y contenido.
+
+## Despliegue
+
+Railway, servicio **Autodealing**, repositorio `rahimy7/Autodealing`, rama `main`.
+
+- Docker ejecuta el servidor Node como usuario sin privilegios.
+- `DATABASE_URL` se configura únicamente como variable privada del servicio.
+- Health check `/health` verifica la conexión a Neon.
+- Base exclusiva: proyecto Neon `bitter-glitter-87379602`, Virginia, Postgres 17, cómputo 0.25–1 CU con suspensión automática.
+- Credenciales de administración y Neon no se incluyen en imágenes, paquetes ni Git.
+- Sesiones con cookie HttpOnly y Secure en producción, caducidad de 12 horas, CSRF, límites de acceso y consultas públicas, contraseñas scrypt, SQL parametrizado, permisos en servidor y bitácora de cambios.
+
+Las ventas son registros comerciales internos. Los documentos fiscales, financiamiento, integraciones con DealerCenter/Autofunds y automatización de avisos no forman parte de esta entrega.
