@@ -1,7 +1,71 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {money,vehicleInput,saleInput,hashPassword,verifyPassword,publicVehicle} from '../server/domain.js';
-const vehicle={stock:'PL-001',vin:'1HGCM82633A004352',make:'Honda',model:'Accord',year:2022,status:'draft',cats:['sedan'],price:22500.25,miles:20000,purchaseCost:15000};
-test('money rejects negatives, non-finite values, missing values and fractional cents',()=>{for(const value of [-1,'',undefined,Infinity,'hello',1.001])assert.throws(()=>money(value));assert.equal(money('20000.05'),20000.05);});
-test('vehicle validation prevents impossible years and direct sold status',()=>{assert.equal(vehicleInput(vehicle).data.price,22500.25);for(const patch of [{year:1800},{miles:-4},{vin:'invalid'},{status:'sold'},{cats:['unknown']}])assert.throws(()=>vehicleInput({...vehicle,...patch}));});
-test('public vehicle serializer never exposes costs or buyer details',()=>{const publicData=publicVehicle({id:'v',data:vehicleInput(vehicle).data,stock:'PL-001',vin:vehicle.vin,status:'available',purchase_cost:15000,buyer_name:'Private'},[{id:'photo'}]);assert.equal(publicData.purchase_cost,undefined);assert.equal(publicData.buyer_name,undefined);assert.deepEqual(publicData.photos,['/api/photos/photo']);});
-test('sales require a positive price and named buyer',()=>{assert.throws(()=>saleInput({price:0,buyerName:'Name',soldAt:'2026-10-28'}));assert.throws(()=>saleInput({price:100,buyerName:'',soldAt:'2026-10-28'}));});
-test('passwords are salted and verified without storing plaintext',async()=>{const a=await hashPassword('a-long-unique-password'),b=await hashPassword('a-long-unique-password');assert.notEqual(a,b);assert.equal(await verifyPassword('a-long-unique-password',a),true);assert.equal(await verifyPassword('wrong-password',a),false);assert.equal(await verifyPassword('x'.repeat(1000),a),false);});
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  money,
+  vehicleInput,
+  saleInput,
+  hashPassword,
+  verifyPassword,
+  publicVehicle,
+} from "../server/domain.js";
+const vehicle = {
+  stock: "PL-001",
+  vin: "1HGCM82633A004352",
+  make: "Honda",
+  model: "Accord",
+  year: 2022,
+  status: "draft",
+  cats: ["sedan"],
+  price: 22500.25,
+  miles: 20000,
+  purchaseCost: 15000,
+};
+test("money rejects negatives, non-finite values, missing values and fractional cents", () => {
+  for (const value of [-1, "", undefined, Infinity, "hello", 1.001])
+    assert.throws(() => money(value));
+  assert.equal(money("20000.05"), 20000.05);
+});
+test("vehicle validation prevents impossible years and direct sold status", () => {
+  assert.equal(vehicleInput(vehicle).data.price, 22500.25);
+  for (const patch of [
+    { year: 1800 },
+    { miles: -4 },
+    { vin: "invalid" },
+    { status: "sold" },
+    { cats: ["unknown"] },
+  ])
+    assert.throws(() => vehicleInput({ ...vehicle, ...patch }));
+});
+test("public vehicle serializer never exposes costs or buyer details", () => {
+  const publicData = publicVehicle(
+    {
+      id: "v",
+      data: vehicleInput(vehicle).data,
+      stock: "PL-001",
+      vin: vehicle.vin,
+      status: "available",
+      purchase_cost: 15000,
+      buyer_name: "Private",
+    },
+    [{ id: "photo" }],
+  );
+  assert.equal(publicData.purchase_cost, undefined);
+  assert.equal(publicData.buyer_name, undefined);
+  assert.deepEqual(publicData.photos, ["/api/photos/photo"]);
+});
+test("sales require a positive price and named buyer", () => {
+  assert.throws(() =>
+    saleInput({ price: 0, buyerName: "Name", soldAt: "2026-10-28" }),
+  );
+  assert.throws(() =>
+    saleInput({ price: 100, buyerName: "", soldAt: "2026-10-28" }),
+  );
+});
+test("passwords are salted and verified without storing plaintext", async () => {
+  const a = await hashPassword("a-long-unique-password"),
+    b = await hashPassword("a-long-unique-password");
+  assert.notEqual(a, b);
+  assert.equal(await verifyPassword("a-long-unique-password", a), true);
+  assert.equal(await verifyPassword("wrong-password", a), false);
+  assert.equal(await verifyPassword("x".repeat(1000), a), false);
+});

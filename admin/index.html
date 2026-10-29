@@ -1,5 +1,84 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Administración | Premier Line Motors</title><link rel="icon" href="/api/site/logo"><link rel="stylesheet" href="/admin/admin.css"><script type="module" src="/admin/admin.js"></script></head><body>
-<div id="loginView" class="login-page"><form id="loginForm" class="login-card"><img src="/api/site/logo" alt="Premier Line Motors"><p class="eyebrow">PREMIER MANAGEMENT SUITE</p><h1>Tu concesionario,<br>en un solo lugar.</h1><p class="muted">Accede para gestionar inventario, consultas y ventas.</p><label>Usuario<input name="username" autocomplete="username" required maxlength="80"></label><label>Contraseña<input name="password" type="password" autocomplete="current-password" required maxlength="128"></label><button class="primary" type="submit">Entrar al panel →</button><p id="loginError" role="alert"></p><a href="/">← Ver página pública</a></form></div>
-<div id="appView" hidden><aside class="sidebar"><a href="/" target="_blank" rel="noopener" class="brand"><img src="/api/site/logo" alt="Premier Line Motors"></a><p class="eyebrow">ADMINISTRACIÓN</p><nav id="nav"><button data-page="dashboard" class="active">◫ <span>Resumen</span></button><button data-page="vehicles">▧ <span>Inventario</span></button><button data-page="sales">↗ <span>Ventas</span></button><button data-page="leads">◌ <span>Consultas</span></button><button data-page="settings" data-admin>⚙ <span>Página web</span></button><button data-page="users" data-admin>♙ <span>Equipo</span></button><button data-page="account">◎ <span>Mi cuenta</span></button></nav><div class="sidebar-bottom"><a href="/" target="_blank" rel="noopener">Ver sitio público ↗</a><button id="logout">Cerrar sesión</button></div></aside><main class="workspace"><header class="top"><button id="toggleNav" aria-label="Abrir navegación">☰</button><div><span class="eyebrow">PREMIER LINE MOTORS</span><span class="connection">● Neon conectado</span></div><span id="userLabel"></span></header><div id="content" class="content" aria-live="polite"></div></main></div>
-<div id="toast" role="status" hidden></div><dialog id="editor"><div class="dialog-header"><h2 id="editorTitle"></h2><button id="closeEditor" type="button" class="icon" aria-label="Cerrar">×</button></div><div id="editorBody"></div></dialog>
-</body></html>
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Administración | Premier Line Motors</title>
+    <link rel="icon" href="/api/site/logo" />
+    <link rel="stylesheet" href="/admin/admin.css" />
+    <script type="module" src="/admin/admin.js"></script>
+  </head>
+  <body>
+    <div id="loginView" class="login-page">
+      <form id="loginForm" class="login-card">
+        <img src="/api/site/logo" alt="Premier Line Motors" />
+        <p class="eyebrow">PREMIER MANAGEMENT SUITE</p>
+        <h1>Tu concesionario,<br />en un solo lugar.</h1>
+        <p class="muted">
+          Accede para gestionar inventario, consultas y ventas.
+        </p>
+        <label
+          >Usuario<input
+            name="username"
+            autocomplete="username"
+            required
+            maxlength="80" /></label
+        ><label
+          >Contraseña<input
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            maxlength="128" /></label
+        ><button class="primary" type="submit">Entrar al panel →</button>
+        <p id="loginError" role="alert"></p>
+        <a href="/">← Ver página pública</a>
+      </form>
+    </div>
+    <div id="appView" hidden>
+      <aside class="sidebar">
+        <a href="/" target="_blank" rel="noopener" class="brand"
+          ><img src="/api/site/logo" alt="Premier Line Motors"
+        /></a>
+        <p class="eyebrow">ADMINISTRACIÓN</p>
+        <nav id="nav">
+          <button data-page="dashboard" class="active">
+            ◫ <span>Resumen</span></button
+          ><button data-page="vehicles">▧ <span>Inventario</span></button
+          ><button data-page="sales">↗ <span>Ventas</span></button
+          ><button data-page="leads">◌ <span>Consultas</span></button
+          ><button data-page="settings" data-admin>
+            ⚙ <span>Página web</span></button
+          ><button data-page="users" data-admin>♙ <span>Equipo</span></button
+          ><button data-page="account">◎ <span>Mi cuenta</span></button>
+        </nav>
+        <div class="sidebar-bottom">
+          <a href="/" target="_blank" rel="noopener">Ver sitio público ↗</a
+          ><button id="logout">Cerrar sesión</button>
+        </div>
+      </aside>
+      <main class="workspace">
+        <header class="top">
+          <button id="toggleNav" aria-label="Abrir navegación">☰</button>
+          <div>
+            <span class="eyebrow">PREMIER LINE MOTORS</span
+            ><span class="connection">● Neon conectado</span>
+          </div>
+          <span id="userLabel"></span>
+        </header>
+        <div id="content" class="content" aria-live="polite"></div>
+      </main>
+    </div>
+    <div id="toast" role="status" hidden></div>
+    <dialog id="editor">
+      <div class="dialog-header">
+        <h2 id="editorTitle"></h2>
+        <button id="closeEditor" type="button" class="icon" aria-label="Cerrar">
+          ×
+        </button>
+      </div>
+      <div id="editorBody"></div>
+    </dialog>
+  </body>
+</html>
