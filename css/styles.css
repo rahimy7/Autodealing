@@ -870,3 +870,7 @@ input[type='range']:active::-webkit-slider-thumb { transform: scale(1.15); }
   .cc-media img.alt { display: none; }
   .car-card:hover .cc-media img.main { opacity: 1; }
 }
+
+/* Keep full vehicle albums within the original compact gallery. */
+.m-thumbs.photo-gallery { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: calc((100% - 30px) / 4); overflow-x: auto; padding: 2px; scroll-snap-type: x proximity; }
+.m-thumbs.photo-gallery button { min-width: 0; scroll-snap-align: start; }

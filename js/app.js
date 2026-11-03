@@ -314,7 +314,8 @@ function fillModal(v, keepTab = false) {
   $('#mDesc').textContent = L(v.desc);
   $('#mFav').setAttribute('aria-pressed', state.favs.has(v.id));
   const tabs = v.live ? (v.photos.length ? v.photos.map((_, i) => 'photo-' + i) : ['photo-0']) : ['front', 'side', 'rear'];
-  $('#mThumbs').innerHTML = tabs.map((a) => `<button type="button" role="tab" data-tab="${a}" aria-selected="false" aria-label="${t('modal.gallery')} ${a}"><img src="${img(v.id, a.startsWith('photo-') ? Number(a.slice(6)) : a)}" alt=""></button>`).join('')
+  $('#mThumbs').classList.toggle('photo-gallery', v.live === true);
+  $('#mThumbs').innerHTML = tabs.map((a) => `<button type="button" role="tab" data-tab="${a}" aria-selected="false" aria-label="${t('modal.gallery')} ${a.startsWith('photo-') ? Number(a.slice(6)) + 1 : a}"><img loading="lazy" src="${img(v.id, a.startsWith('photo-') ? Number(a.slice(6)) : a)}" alt=""></button>`).join('')
     + (v.live ? '' : `<button type="button" role="tab" class="t3d" data-tab="3d" aria-selected="false"><span>360°<small>${t('modal.3d')}</small></span></button>`);
   showTab(keepTab ? modalTab : (v.live ? 'photo-0' : 'front'));
 }
