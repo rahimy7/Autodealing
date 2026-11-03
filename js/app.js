@@ -112,7 +112,7 @@ function renderTypes() {
 }
 
 function renderChips() {
-  const cats = ['all', ...CATEGORIES.map((c) => c.id)];
+  const cats = ['all', ...CATEGORIES.map((c) => c.id), ...(catCount('van') ? ['van'] : [])];
   $('#fType').innerHTML = cats.map((c) => `
     <button type="button" class="chip" data-chip="${c}" aria-pressed="${state.filters.cat === c}">${t('cat.' + c)} <small>${catCount(c)}</small></button>`).join('');
 }
@@ -145,8 +145,8 @@ function filtered() {
   });
   const sorters = {
     featured: (a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0),
-    priceAsc: (a, b) => a.price - b.price,
-    priceDesc: (a, b) => b.price - a.price,
+    priceAsc: (a, b) => Number(a.priceOnRequest) - Number(b.priceOnRequest) || a.price - b.price,
+    priceDesc: (a, b) => Number(a.priceOnRequest) - Number(b.priceOnRequest) || b.price - a.price,
     milesAsc: (a, b) => a.miles - b.miles,
     yearDesc: (a, b) => b.year - a.year,
   };
@@ -299,6 +299,7 @@ function fillModal(v, keepTab = false) {
   $('#mTitle').textContent = `${v.make} ${v.model}`;
   $('#mTrim').textContent = `${v.trim} · ${L(v.ext)}`;
   $('#mPrice').textContent = askingPrice(v);
+  $('#mPayment span').textContent = v.priceOnRequest ? askingPrice(v) : t('modal.payment');
   $('#mMsrp').textContent = !v.priceOnRequest && v.msrp > v.price ? `${t('card.msrp')} ${usd(v.msrp)}` : '';
   $('#mMonthly').textContent = v.priceOnRequest ? '' : `${t('card.est')} ${usd(estMonthly(v.price))}${t('card.mo')}`;
   const specs = [
@@ -383,7 +384,8 @@ function bindModal() {
     setTimeout(() => $('#testDriveForm [name=name]').focus({ preventScroll: true }), 700);
   });
   $('#mPayment').addEventListener('click', () => {
-    const price = currentVehicle.priceOnRequest ? '' : currentVehicle.price;
+    if (currentVehicle.priceOnRequest) { toast((state.lang === 'es' ? 'Consulta el precio: ' : 'Contact us for price: ') + DEALER.phone); return; }
+    const price = currentVehicle.price;
     closeModal();
     $('#cPrice').value = price;
     calc();
