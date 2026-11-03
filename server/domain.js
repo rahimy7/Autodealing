@@ -48,7 +48,7 @@ export function vehicleInput(b) {
     ? [
         ...new Set(
           b.cats.filter((c) =>
-            ["suv", "truck", "sedan", "coupe", "electric", "hatch"].includes(c),
+            ["suv", "truck", "sedan", "coupe", "electric", "hatch", "van"].includes(c),
           ),
         ),
       ]

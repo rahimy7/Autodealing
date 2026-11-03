@@ -351,6 +351,7 @@ function vehicleEditor(tab) {
       ["truck", "Pickup"],
       ["coupe", "Coupé / deportivo"],
       ["hatch", "Hatchback"],
+      ["van", "Minivan / Van"],
       ["electric", "Eléctrico"],
     ],
     v.cats?.[0],
