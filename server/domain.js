@@ -68,8 +68,9 @@ export function vehicleInput(b) {
       make,
       model,
       trim: text(b.trim, 100),
-      price: money(b.price),
-      msrp: money(b.msrp ?? b.price),
+      price: money(b.price ?? (b.priceOnRequest === true ? 0 : undefined)),
+      priceOnRequest: b.priceOnRequest === true,
+      msrp: money(b.msrp ?? b.price ?? (b.priceOnRequest === true ? 0 : undefined)),
       miles: integer(b.miles ?? 0, 0, 9999999, "Millaje"),
       condition: ["used", "new", "certified"].includes(b.condition)
         ? b.condition
@@ -80,7 +81,7 @@ export function vehicleInput(b) {
       drive: text(b.drive, 30),
       trans: localized(b.trans, 100),
       economy: text(b.economy, 60),
-      seats: integer(b.seats ?? 5, 1, 50, "Asientos"),
+      seats: b.seats === null || b.seats === "" ? null : integer(b.seats ?? 5, 1, 50, "Asientos"),
       fuel: ["gas", "diesel", "hybrid", "electric"].includes(b.fuel)
         ? b.fuel
         : "gas",
@@ -118,7 +119,7 @@ export function publicVehicle(row, photos) {
     stock: row.stock,
     vin: row.vin,
     status: row.status,
-    photos: photos.map((p) => `/api/photos/${p.id}`),
+    photos: photos.map((p) => `/media/vehicles/${row.id}/${p.id}.webp`),
     live: true,
   };
 }

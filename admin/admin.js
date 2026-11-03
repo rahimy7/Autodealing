@@ -220,7 +220,7 @@ function dashboard(d) {
   $("dashNew").onclick = () => newVehicle();
 }
 function vehicleRow(v) {
-  return `<tr><td><div class="vehicle-cell">${v.photos[0] ? `<img class="thumb" src="${esc(v.photos[0].url)}" alt="">` : '<span class="thumb placeholder">Sin foto</span>'}<div><strong>${esc(v.year + " " + v.make + " " + v.model)}</strong><small>${esc(v.stock)} · ${Number(v.miles).toLocaleString()} mi</small></div></div></td><td>${badge(v.status)}${v.demo ? ' <span class="status">Demo</span>' : ""}</td><td>${usd(v.price)}</td><td>${v.photos.length} fotos</td><td><div class="actions"><button class="tiny" data-edit="${v.id}">Abrir ficha</button>${!v.demo && ["available", "reserved"].includes(v.status) ? `<button class="tiny" data-sell="${v.id}">Registrar venta</button>` : ""}</div></td></tr>`;
+  return `<tr><td><div class="vehicle-cell">${v.photos[0] ? `<img class="thumb" src="${esc(v.photos[0].url)}" alt="">` : '<span class="thumb placeholder">Sin foto</span>'}<div><strong>${esc(v.year + " " + v.make + " " + v.model)}</strong><small>${esc(v.stock)} · ${Number(v.miles).toLocaleString()} mi</small></div></div></td><td>${badge(v.status)}${v.demo ? ' <span class="status">Demo</span>' : ""}</td><td>${v.priceOnRequest ? "Consultar precio" : usd(v.price)}</td><td>${v.photos.length} fotos</td><td><div class="actions"><button class="tiny" data-edit="${v.id}">Abrir ficha</button>${!v.demo && ["available", "reserved"].includes(v.status) ? `<button class="tiny" data-sell="${v.id}">Registrar venta</button>` : ""}</div></td></tr>`;
 }
 function inventoryPage() {
   $("content").innerHTML =
@@ -363,7 +363,7 @@ function vehicleEditor(tab) {
       ["certified", "Certificado"],
     ],
     v.condition,
-  )}<div class="form-section">Precio y características</div>${field("Precio de venta (USD) *", "price", v.price, "number", 'required min="0" step="0.01"')}${field("Precio de referencia (opcional)", "msrp", v.msrp ?? v.price, "number", 'min="0" step="0.01"')}${user.role === "admin" ? field("Costo de compra (privado, USD)", "purchaseCost", v.purchaseCost ?? 0, "number", 'min="0" step="0.01"') : ""}${field("Millaje", "miles", v.miles, "number", 'min="0" max="9999999" step="1"')}${field("Motor", "engine", v.engine)}${field("Potencia (hp)", "hp", v.hp ?? 0, "number", 'min="0" max="3000"')}${field("Tracción (AWD, FWD…)", "drive", v.drive)}${field("Transmisión", "trans", v.trans?.es || v.trans?.en)}${select(
+  )}<div class="form-section">Precio y características</div><label class="check"><input type="checkbox" name="priceOnRequest" ${v.priceOnRequest ? "checked" : ""}>Mostrar «Consultar precio»</label>${field("Precio de venta (USD) *", "price", v.price, "number", 'required min="0" step="0.01"')}${field("Precio de referencia (opcional)", "msrp", v.msrp ?? v.price, "number", 'min="0" step="0.01"')}${user.role === "admin" ? field("Costo de compra (privado, USD)", "purchaseCost", v.purchaseCost ?? 0, "number", 'min="0" step="0.01"') : ""}${field("Millaje", "miles", v.miles, "number", 'min="0" max="9999999" step="1"')}${field("Motor", "engine", v.engine)}${field("Potencia (hp)", "hp", v.hp ?? 0, "number", 'min="0" max="3000"')}${field("Tracción (AWD, FWD…)", "drive", v.drive)}${field("Transmisión", "trans", v.trans?.es || v.trans?.en)}${select(
     "Combustible",
     "fuel",
     [
@@ -373,7 +373,7 @@ function vehicleEditor(tab) {
       ["electric", "Eléctrico"],
     ],
     v.fuel,
-  )}${field("Asientos", "seats", v.seats ?? 5, "number", 'min="1" max="50"')}${field("Exterior", "ext", v.ext?.es || v.ext?.en)}${field("Interior", "int", v.int?.es || v.int?.en)}${field("Consumo / autonomía", "economy", v.economy)}<label class="check"><input type="checkbox" name="featured" ${v.featured ? "checked" : ""}>Destacar en el catálogo</label><label class="check"><input type="checkbox" name="demo" ${v.demo ? "checked" : ""}>Unidad de demostración (no vendible)</label><div class="form-section">Descripción pública</div><label class="wide">Descripción en español<textarea name="descEs" rows="4" maxlength="8000">${esc(v.desc?.es)}</textarea></label><label class="wide">Descripción en inglés<textarea name="descEn" rows="4" maxlength="8000">${esc(v.desc?.en)}</textarea></label></div><p class="error" role="alert"></p><div class="form-footer"><button type="submit" class="primary">${v.id ? "Guardar cambios" : "Guardar y agregar fotos"} →</button></div></form>`;
+  )}${field("Asientos", "seats", v.seats ?? "", "number", 'min="1" max="50"')}${field("Exterior", "ext", v.ext?.es || v.ext?.en)}${field("Interior", "int", v.int?.es || v.int?.en)}${field("Consumo / autonomía", "economy", v.economy)}<label class="check"><input type="checkbox" name="featured" ${v.featured ? "checked" : ""}>Destacar en el catálogo</label><label class="check"><input type="checkbox" name="demo" ${v.demo ? "checked" : ""}>Unidad de demostración (no vendible)</label><div class="form-section">Descripción pública</div><label class="wide">Descripción en español<textarea name="descEs" rows="4" maxlength="8000">${esc(v.desc?.es)}</textarea></label><label class="wide">Descripción en inglés<textarea name="descEn" rows="4" maxlength="8000">${esc(v.desc?.en)}</textarea></label></div><p class="error" role="alert"></p><div class="form-footer"><button type="submit" class="primary">${v.id ? "Guardar cambios" : "Guardar y agregar fotos"} →</button></div></form>`;
   $("vehicleForm").onsubmit = (e) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -384,6 +384,7 @@ function vehicleEditor(tab) {
         data.cats.push("electric");
       data.featured = form.elements.featured.checked;
       data.demo = form.elements.demo.checked;
+      data.priceOnRequest = form.elements.priceOnRequest.checked;
       data.desc = { es: data.descEs, en: data.descEn };
       data.version = v.version;
       const result = await api(
@@ -404,7 +405,7 @@ function vehicleEditor(tab) {
 function photosTab() {
   const v = editorVehicle;
   $("vehicleTab").innerHTML =
-    `<p class="help">La primera imagen es la portada. Puedes cambiar el orden con las flechas. JPG, PNG o WEBP; hasta 10 MB por archivo y 30 fotos por unidad. Las fotos se guardan en Neon y se optimizan automáticamente.</p><div class="file-upload"><label>Agregar fotografías<input id="photoFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple></label></div><p id="photoStatus" role="status"></p><div class="photo-grid">${v.photos.map((p, i) => `<article class="photo"><img src="${esc(p.url)}" alt="Foto ${i + 1}"><span>${i === 0 ? "PORTADA" : "Foto " + (i + 1)}</span><div class="actions"><button type="button" class="tiny" data-move="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Mover foto ${i + 1} antes">←</button><button type="button" class="tiny" data-move="${i}" data-dir="1" ${i === v.photos.length - 1 ? "disabled" : ""} aria-label="Mover foto ${i + 1} después">→</button><button type="button" class="tiny" data-delete-photo="${p.id}">Quitar</button></div></article>`).join("")}</div>`;
+    `<p class="help">La primera imagen es la portada. Puedes cambiar el orden con las flechas. JPG, PNG o WEBP; hasta 10 MB por archivo y 60 fotos por unidad. Las fotos se guardan en Neon y se optimizan automáticamente.</p><div class="file-upload"><label>Agregar fotografías<input id="photoFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple></label></div><p id="photoStatus" role="status"></p><div class="photo-grid">${v.photos.map((p, i) => `<article class="photo"><img src="${esc(p.url)}" alt="Foto ${i + 1}"><span>${i === 0 ? "PORTADA" : "Foto " + (i + 1)}</span><div class="actions"><button type="button" class="tiny" data-move="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Mover foto ${i + 1} antes">←</button><button type="button" class="tiny" data-move="${i}" data-dir="1" ${i === v.photos.length - 1 ? "disabled" : ""} aria-label="Mover foto ${i + 1} después">→</button><button type="button" class="tiny" data-delete-photo="${p.id}">Quitar</button></div></article>`).join("")}</div>`;
   $("photoFiles").onchange = async (e) => {
     const files = [...e.target.files];
     e.target.disabled = true;

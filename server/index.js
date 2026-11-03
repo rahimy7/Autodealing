@@ -235,6 +235,17 @@ app.get("/api/photos/:id", checkId, async (req, res) => {
   res.set("Cache-Control", "private, no-cache");
   res.send(p.image);
 });
+// Public vehicle folders are withdrawn immediately when the unit is sold.
+app.get("/media/vehicles/:vehicleId/:photoId.webp", async (req, res) => {
+  if (!isUuid(req.params.vehicleId) || !isUuid(req.params.photoId)) return res.sendStatus(404);
+  const { rows } = await query(
+    "SELECT p.image,p.mime FROM vehicle_photos p JOIN vehicles v ON v.id=p.vehicle_id WHERE p.id=$1 AND v.id=$2 AND v.status IN ('available','reserved')",
+    [req.params.photoId, req.params.vehicleId],
+  );
+  if (!rows[0]) return res.sendStatus(404);
+  res.set("Cache-Control", "no-store");
+  res.type(rows[0].mime).send(rows[0].image);
+});
 app.get("/api/content", async (_, res) => {
   res.json(
     (await query("SELECT value FROM settings WHERE id='content'")).rows[0]
@@ -393,8 +404,8 @@ app.post(
         "SELECT count(*)::integer count FROM vehicle_photos WHERE vehicle_id=$1",
         [req.params.id],
       );
-      if (count[0].count >= 30)
-        throw new InputError("Máximo 30 fotos por vehículo.");
+      if (count[0].count >= 60)
+        throw new InputError("Máximo 60 fotos por vehículo.");
       await c.query(
         "INSERT INTO vehicle_photos(id,vehicle_id,image,mime,position) VALUES($1,$2,$3,$4,$5)",
         [id, req.params.id, bytes, "image/webp", count[0].count],
@@ -425,7 +436,7 @@ app.put("/api/admin/vehicles/:id/photos/order", checkId, async (req, res) => {
   const ids = req.body.ids;
   if (
     !Array.isArray(ids) ||
-    ids.length > 30 ||
+    ids.length > 60 ||
     !ids.every(isUuid) ||
     new Set(ids).size !== ids.length
   )

@@ -51,7 +51,7 @@ test("public vehicle serializer never exposes costs or buyer details", () => {
   );
   assert.equal(publicData.purchase_cost, undefined);
   assert.equal(publicData.buyer_name, undefined);
-  assert.deepEqual(publicData.photos, ["/api/photos/photo"]);
+  assert.deepEqual(publicData.photos, ["/media/vehicles/v/photo.webp"]);
 });
 test("sales require a positive price and named buyer", () => {
   assert.throws(() =>
@@ -68,4 +68,9 @@ test("passwords are salted and verified without storing plaintext", async () => 
   assert.equal(await verifyPassword("a-long-unique-password", a), true);
   assert.equal(await verifyPassword("wrong-password", a), false);
   assert.equal(await verifyPassword("x".repeat(1000), a), false);
+});
+
+test("unknown asking price is explicit and missing seat count stays unknown", () => {
+ const v = vehicleInput({...vehicle, price: undefined, priceOnRequest:true, seats:null});
+ assert.equal(v.data.price,0); assert.equal(v.data.priceOnRequest,true); assert.equal(v.data.seats,null);
 });

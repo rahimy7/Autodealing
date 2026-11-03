@@ -6,7 +6,7 @@ El sitio conserva la estructura original de Novara: vistas inmersiva y clásica,
 
 - **Resumen:** inventario por estado, consultas pendientes, ventas, ingresos y margen bruto (solo administración).
 - **Inventario:** altas y edición; stock/VIN únicos; borrador, disponible, reservado, vendido y archivado. Descripciones EN/ES, detalles técnicos, precios y destacados.
-- **Fotografías:** 30 por vehículo, portada y orden, carga de JPG/PNG/WEBP hasta 10 MB. Se optimizan a WEBP y se guardan como binarios en la base exclusiva de Neon, nunca en el almacenamiento efímero de Railway.
+- **Fotografías:** 60 por vehículo, portada y orden, carga de JPG/PNG/WEBP hasta 10 MB. Se optimizan a WEBP y se guardan como binarios en la base exclusiva de Neon, nunca en el almacenamiento efímero de Railway.
 - **Costos y gastos:** compra, transporte, reparaciones y acondicionamiento. Privados para administración; se fijan al cerrar una venta.
 - **Ventas:** precio, comprador, contacto, fecha y notas internas. Una venta retira la unidad del catálogo. La anulación conserva el historial y devuelve la unidad a disponible. No ejecuta cobros ni genera contratos.
 - **Consultas:** los formularios públicos guardan solicitudes en Neon, con estados nueva, contactada y cerrada. No se envían correos automáticos.
@@ -51,3 +51,5 @@ Railway, servicio **Autodealing**, repositorio `rahimy7/Autodealing`, rama `main
 - Sesiones con cookie HttpOnly y Secure en producción, caducidad de 12 horas, CSRF, límites de acceso y consultas públicas, contraseñas scrypt, SQL parametrizado, permisos en servidor y bitácora de cambios.
 
 Las ventas son registros comerciales internos. Los documentos fiscales, financiamiento, integraciones con DealerCenter/Autofunds y automatización de avisos no forman parte de esta entrega.
+
+Las fotos públicas se agrupan en `/media/vehicles/<vehículo>/<foto>.webp`. Al vender o archivar la unidad, esas direcciones devuelven 404 y el catálogo la retira; las fotos permanecen privadas para el historial y una posible anulación. No se usa el disco efímero de Railway. Las unidades sin precio confirmado pueden mostrar «Consultar precio» desde administración.

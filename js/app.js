@@ -31,6 +31,7 @@ const t = (key, vars) => {
 };
 const L = (o) => (o && typeof o === 'object' ? o[state.lang] ?? o.en : o);
 const usd = (n) => '$' + Math.round(n).toLocaleString('en-US');
+const askingPrice = (v) => v.priceOnRequest ? (state.lang === 'es' ? 'Consultar precio' : 'Contact for price') : usd(v.price);
 const num = (n) => Math.round(n).toLocaleString('en-US');
 const payment = (principal, apr, months) => {
   if (principal <= 0) return 0;
@@ -154,7 +155,7 @@ function filtered() {
 
 function cardHTML(v, i) {
   v = escaped(v);
-  const drop = v.msrp - v.price;
+  const drop = v.priceOnRequest ? 0 : v.msrp - v.price;
   const fuelIcon = v.fuel === 'electric' ? 'i-bolt' : 'i-fuel';
   const badges = [`<span class="badge ${v.condition}">${t('cond.' + v.condition)}</span>`];
   if (v.demo) badges.push(`<span class="badge">${state.lang==='es'?'Demo':'Demo'}</span>`);
@@ -174,14 +175,14 @@ function cardHTML(v, i) {
       <div class="cc-specs">
         <span><svg class="i"><use href="#i-road"/></svg>${num(v.miles)} ${t('card.miles')}</span>
         <span><svg class="i"><use href="#i-drive"/></svg>${v.drive}</span>
-        <span><svg class="i"><use href="#i-gauge"/></svg>${v.hp} hp</span>
-        <span><svg class="i"><use href="#${fuelIcon}"/></svg>${v.economy}</span>
+        <span><svg class="i"><use href="#i-gauge"/></svg>${v.hp ? `${v.hp} hp` : '—'}</span>
+        <span><svg class="i"><use href="#${fuelIcon}"/></svg>${v.economy || '—'}</span>
       </div>
       <div class="cc-foot">
         <div class="cc-price">
           <small>${t('card.price')}</small>
-          <strong>${usd(v.price)}</strong>${drop > 0 ? `<s>${usd(v.msrp)}</s>` : ''}
-          <em>${t('card.est')} ${usd(estMonthly(v.price))}${t('card.mo')}</em>
+          <strong>${askingPrice(v)}</strong>${drop > 0 ? `<s>${usd(v.msrp)}</s>` : ''}
+          <em>${v.priceOnRequest ? '' : `${t('card.est')} ${usd(estMonthly(v.price))}${t('card.mo')}`}</em>
         </div>
         <button type="button" class="cc-cta" data-open="${v.id}" aria-label="${t('card.details')}"><svg class="i"><use href="#i-arrow"/></svg></button>
         <button type="button" class="btn btn-primary btn-sm cc-cta-text" data-open="${v.id}">${t('card.view')}</button>
@@ -297,9 +298,9 @@ function fillModal(v, keepTab = false) {
   $('#mKicker').textContent = `${v.year} · ${t('cond.' + v.condition)} · #${v.stock}`;
   $('#mTitle').textContent = `${v.make} ${v.model}`;
   $('#mTrim').textContent = `${v.trim} · ${L(v.ext)}`;
-  $('#mPrice').textContent = usd(v.price);
-  $('#mMsrp').textContent = v.msrp > v.price ? `${t('card.msrp')} ${usd(v.msrp)}` : '';
-  $('#mMonthly').textContent = `${t('card.est')} ${usd(estMonthly(v.price))}${t('card.mo')}`;
+  $('#mPrice').textContent = askingPrice(v);
+  $('#mMsrp').textContent = !v.priceOnRequest && v.msrp > v.price ? `${t('card.msrp')} ${usd(v.msrp)}` : '';
+  $('#mMonthly').textContent = v.priceOnRequest ? '' : `${t('card.est')} ${usd(estMonthly(v.price))}${t('card.mo')}`;
   const specs = [
     ['modal.engine', v.engine], ['modal.power', v.hp ? `${v.hp} hp` : '—'], ['modal.drive', v.drive], ['modal.trans', L(v.trans)],
     ['modal.economy', v.economy], ['modal.zero60', `${v.zero60} s`], ['modal.miles', `${num(v.miles)} mi`], ['modal.seats', v.seats],
@@ -308,7 +309,7 @@ function fillModal(v, keepTab = false) {
   if (!v.zero60) specs.splice(specs.findIndex(([key]) => key === 'modal.zero60'), 1);
   if (v.towing) specs.splice(6, 0, ['modal.tow', v.towing]);
   specs.push(['modal.vin', v.vin]);
-  $('#mSpecs').innerHTML = specs.map(([k, val]) => `<div><dt>${t(k)}</dt><dd>${escapeHTML(val)}</dd></div>`).join('');
+  $('#mSpecs').innerHTML = specs.map(([k, val]) => `<div><dt>${t(k)}</dt><dd>${escapeHTML(val || '—')}</dd></div>`).join('');
   $('#mDesc').textContent = L(v.desc);
   $('#mFav').setAttribute('aria-pressed', state.favs.has(v.id));
   const tabs = v.live ? (v.photos.length ? v.photos.map((_, i) => 'photo-' + i) : ['photo-0']) : ['front', 'side', 'rear'];
@@ -382,7 +383,7 @@ function bindModal() {
     setTimeout(() => $('#testDriveForm [name=name]').focus({ preventScroll: true }), 700);
   });
   $('#mPayment').addEventListener('click', () => {
-    const price = currentVehicle.price;
+    const price = currentVehicle.priceOnRequest ? '' : currentVehicle.price;
     closeModal();
     $('#cPrice').value = price;
     calc();

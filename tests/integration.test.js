@@ -219,6 +219,9 @@ test(
           );
           const r = await send("/api/inventory", { auth: false });
           assert.equal(r.data[0].id, vehicle);
+          assert.equal(r.data[0].photos[0], `/media/vehicles/${vehicle}/${idPhoto}.webp`);
+          assert.equal((await send(r.data[0].photos[0], { auth:false })).status, 200);
+          assert.equal((await send(`/media/vehicles/00000000-0000-4000-8000-000000000000/${idPhoto}.webp`, {auth:false})).status,404);
           assert.equal(r.data[0].purchaseCost, undefined);
           assert.equal(r.data[0].purchase_cost, undefined);
           assert.equal(
@@ -284,6 +287,7 @@ test(
             (await send("/api/inventory", { auth: false })).data.length,
             0,
           );
+          assert.equal((await send(`/media/vehicles/${vehicle}/${idPhoto}.webp`, {auth:false})).status,404);
           const s = (await send("/api/admin/sales")).data[0];
           assert.equal(Number(s.cost), 15500);
           assert.equal(
