@@ -1,0 +1,51 @@
+/* Background curtain, shared by the public vehicle detail and the admin review dialog. */
+.curtain { position: absolute; inset: 0; z-index: 1; --pos: 50%; overflow: hidden; cursor: ew-resize; touch-action: pan-y; -webkit-user-select: none; user-select: none; }
+.curtain[hidden] { display: none; }
+.curtain-scene, .curtain-rest { position: absolute; inset: 0; pointer-events: none; }
+.curtain-scene { clip-path: inset(0 calc(100% - var(--pos)) 0 0); }
+.curtain-rest { clip-path: inset(0 0 0 var(--pos)); }
+.curtain-backdrop { position: absolute; inset: 0; }
+
+/* The cutout must overlap the photo pixel for pixel, so both share this box. */
+.curtain-photo, .curtain-cutout { position: absolute; inset: 0; width: 100%; height: 100%; box-sizing: border-box; padding: 4%; object-fit: contain; }
+.curtain-cutout { filter: drop-shadow(0 12px 12px rgba(0, 0, 0, 0.38)); }
+
+[data-backdrop='studio'] { background: radial-gradient(70% 42% at 50% 66%, #fff, transparent 72%), linear-gradient(180deg, #d9dce2 0%, #eef0f3 56%, #c7cbd2 64%, #e3e5e9 100%); }
+[data-backdrop='showroom'] { background: radial-gradient(60% 34% at 50% 72%, rgba(255, 233, 196, 0.5), transparent 75%), linear-gradient(180deg, transparent 62%, rgba(0, 0, 0, 0.28) 63%, transparent 100%), repeating-linear-gradient(90deg, #2c2f36 0 11%, #3a3e47 11% 11.6%), linear-gradient(180deg, #30333a, #5a554e); }
+[data-backdrop='night'] { background: radial-gradient(62% 38% at 50% 70%, rgba(56, 225, 255, 0.3), transparent 72%), linear-gradient(180deg, #05070d 0%, #0c1324 60%, #03040a 63%, #0a0f1c 100%); }
+[data-backdrop='white'] { background: #fff; }
+
+/* The bar is a strip of pleated cloth that drags the new backdrop along with it. */
+.curtain-bar { position: absolute; top: 0; bottom: 0; left: var(--pos); width: 22px; translate: -50% 0; pointer-events: none; background: linear-gradient(90deg, rgba(0, 0, 0, 0.3), transparent 22%, transparent 78%, rgba(0, 0, 0, 0.3)), repeating-linear-gradient(90deg, #f7f8fa 0 3px, #bcc2cc 5px, #f7f8fa 7px); box-shadow: 0 0 16px rgba(0, 0, 0, 0.5); }
+.curtain-grip { position: absolute; top: 50%; left: 50%; width: 44px; height: 44px; translate: -50% -50%; border-radius: 50%; background: #fff; color: #111722; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45); }
+.curtain-grip::before, .curtain-grip::after { content: ''; position: absolute; top: 50%; width: 9px; height: 9px; border-left: 2.5px solid currentColor; border-bottom: 2.5px solid currentColor; }
+.curtain-grip::before { left: 11px; transform: translateY(-50%) rotate(45deg); }
+.curtain-grip::after { right: 11px; transform: translateY(-50%) rotate(225deg); }
+.curtain-range { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; pointer-events: none; }
+.curtain-range:focus-visible ~ .curtain-bar .curtain-grip { outline: 3px solid #38e1ff; outline-offset: 2px; }
+
+/* In the bottom corners: on narrow layouts the modal's close button covers the top of the stage. */
+.curtain-tag { position: absolute; bottom: 16px; padding: 4px 10px; border-radius: 999px; background: rgba(8, 10, 16, 0.62); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; white-space: nowrap; }
+.curtain-tag-new { left: 12px; }
+.curtain-tag-original { right: 12px; }
+
+.curtain-backdrops { position: absolute; left: 50%; bottom: 10px; translate: -50% 0; display: flex; padding: 2px 4px; border-radius: 999px; background: rgba(8, 10, 16, 0.62); cursor: default; }
+.curtain-backdrops button { position: relative; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; }
+.curtain-backdrops button::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.6); }
+.curtain-backdrops button[data-backdrop='studio']::before { background: linear-gradient(180deg, #eef0f3 58%, #c7cbd2 60%); }
+.curtain-backdrops button[data-backdrop='showroom']::before { background: linear-gradient(180deg, #3a3e47 58%, #5a554e 60%); }
+.curtain-backdrops button[data-backdrop='night']::before { background: linear-gradient(180deg, #0c1324 58%, #38e1ff 60%, #03040a 72%); }
+.curtain-backdrops button[data-backdrop='white']::before { background: #fff; }
+.curtain-backdrops button[aria-pressed='true']::before { border-color: #38e1ff; box-shadow: 0 0 0 2px #38e1ff; }
+.curtain-backdrops button:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+
+@media (max-width: 640px) {
+  .curtain-tag { bottom: 12px; font-size: 10px; padding: 3px 8px; }
+  .curtain-tag-new { left: 8px; }
+  .curtain-tag-original { right: 8px; }
+  .curtain-grip { width: 38px; height: 38px; }
+  .curtain-grip::before { left: 9px; }
+  .curtain-grip::after { right: 9px; }
+  .curtain-backdrops { bottom: 6px; padding: 0 2px; }
+  .curtain-backdrops button { width: 32px; height: 32px; }
+}

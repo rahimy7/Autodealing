@@ -1,0 +1,13 @@
+{
+  "name": "Premier Line Motors · Ventas",
+  "short_name": "Ventas",
+  "start_url": "/ventas/",
+  "scope": "/ventas/",
+  "display": "standalone",
+  "background_color": "#f4f5f7",
+  "theme_color": "#101721",
+  "lang": "es",
+  "icons": [
+    { "src": "/img/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

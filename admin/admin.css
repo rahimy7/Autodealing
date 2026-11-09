@@ -831,3 +831,249 @@ dialog::backdrop {
     scroll-behavior: auto !important;
   }
 }
+.photo-cutout {
+  width: 100%;
+  margin-top: 6px;
+}
+.photo-cutout.has-cutout {
+  color: #34734c;
+  border-color: #34734c;
+}
+#cutoutDialog {
+  width: min(820px, calc(100% - 36px));
+}
+.cutout-body {
+  padding: 20px 28px 24px;
+}
+.cutout-stage {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #e7e9ee;
+}
+.cutout-working {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  background: #101721b8;
+  color: white;
+  text-align: center;
+}
+.cutout-working[hidden] {
+  display: none;
+}
+.cutout-spinner {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 3px solid #fff5;
+  border-top-color: white;
+  border-radius: 50%;
+  animation: cutout-spin 0.9s linear infinite;
+}
+@keyframes cutout-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.cutout-note:empty,
+.cutout-body .error:empty {
+  display: none;
+}
+.cutout-actions {
+  margin-top: 14px;
+}
+@media (max-width: 640px) {
+  .cutout-body {
+    padding: 16px;
+  }
+}
+/* ── Finanzas, desempeño y Omnicanal ── */
+.admin-viz,
+.viz {
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --grid: #eef0f4;
+  --axis: #c9ced8;
+  --tick: #717887;
+}
+td.num,
+th.num {
+  font-variant-numeric: tabular-nums;
+}
+td.num small,
+td small {
+  display: block;
+}
+.viz-legend {
+  display: flex;
+  gap: 18px;
+  font-size: 11px;
+  color: #4a5568;
+  margin-bottom: 10px;
+}
+.viz-legend span,
+.viz-tip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.swatch.s1 {
+  background: var(--series-1);
+}
+.swatch.s2 {
+  background: var(--series-2);
+}
+.viz-frame {
+  position: relative;
+}
+.viz svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.viz-grid {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+.viz-axis {
+  stroke: var(--axis);
+  stroke-width: 1;
+}
+.viz-tick {
+  fill: var(--tick);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.viz-s1 {
+  fill: var(--series-1);
+}
+.viz-s2 {
+  fill: var(--series-2);
+}
+.viz-hit {
+  fill: transparent;
+  cursor: default;
+}
+.viz-hit:focus {
+  outline: none;
+}
+.viz-group:focus-within .viz-hit {
+  stroke: #c4a45f;
+  stroke-width: 1.5;
+}
+.viz-group.dim path {
+  opacity: 0.35;
+}
+.viz-tip {
+  position: absolute;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  gap: 4px;
+  min-width: 190px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px #0e172a1f;
+  font-size: 11px;
+  pointer-events: none;
+}
+.viz-tip b {
+  margin-left: auto;
+  padding-left: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.stats.compact {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.stats.compact .stat {
+  padding: 14px;
+}
+.stats.compact .stat strong {
+  font-size: 20px;
+}
+.rank {
+  display: grid;
+  gap: 10px;
+}
+.rank-row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 14px;
+  align-items: center;
+  font-size: 12px;
+}
+.rank-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rank-track {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.rank-bar {
+  height: 14px;
+  min-width: 2px;
+  background: #2a78d6;
+  border-radius: 0 4px 4px 0;
+}
+.rank-value {
+  font-variant-numeric: tabular-nums;
+  color: #374151;
+  white-space: nowrap;
+}
+.ok-text {
+  color: #2f7a4f;
+}
+.bad-text {
+  color: #a83232;
+}
+.steps {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.8;
+  font-size: 13px;
+}
+.steps code,
+.help code {
+  background: #f0f2f6;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .rank-row {
+    grid-template-columns: 100px 1fr;
+  }
+  .stats.compact {
+    grid-template-columns: 1fr;
+  }
+  .viz-tick {
+    font-size: 13px;
+  }
+}
+.page-heading .actions select {
+  width: auto;
+}
+.page-heading .actions .primary {
+  white-space: nowrap;
+}

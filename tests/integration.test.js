@@ -20,6 +20,8 @@ test(
         DATABASE_SCHEMA: schema,
         ADMIN_BOOTSTRAP_PASSWORD: password,
         NODE_ENV: "test",
+        OMNICANAL_DATABASE_URL: "",
+        OMNICANAL_SESSION_SECRET: "",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -231,6 +233,121 @@ test(
         },
       );
       await t.test(
+        "background cutouts need a session, match the photo and publish on the catalogue",
+        async () => {
+          const sharp = (await import("sharp")).default;
+          const maskForm = async (width, height) => {
+            const form = new FormData();
+            form.append(
+              "mask",
+              new Blob(
+                [
+                  await sharp({
+                    create: {
+                      width,
+                      height,
+                      channels: 3,
+                      background: "#ffffff",
+                    },
+                  })
+                    .png()
+                    .toBuffer(),
+                ],
+                { type: "image/png" },
+              ),
+              "mask.png",
+            );
+            return form;
+          };
+          const url = `/api/admin/vehicles/${vehicle}/photos/${idPhoto}/cutout`;
+          const publicUrl = `/media/vehicles/${vehicle}/${idPhoto}/cutout.webp`;
+          const save = async (form, target = url, options = {}) =>
+            (await send(target, { method: "PUT", body: form, ...options }))
+              .status;
+          assert.equal(
+            (await send(publicUrl, { auth: false })).status,
+            404,
+          );
+          assert.equal(
+            (await send("/api/inventory", { auth: false })).data[0].cutouts[0],
+            null,
+          );
+          assert.equal(
+            await save(await maskForm(40, 30), url, { auth: false }),
+            401,
+          );
+          assert.equal(
+            await save(await maskForm(40, 30), url, { csrfOverride: "bad" }),
+            403,
+          );
+          assert.equal(await save(await maskForm(41, 30)), 400);
+          assert.equal(await save(new FormData()), 400);
+          assert.equal(
+            await save(
+              await maskForm(40, 30),
+              `/api/admin/vehicles/00000000-0000-4000-8000-000000000000/photos/${idPhoto}/cutout`,
+            ),
+            404,
+          );
+          assert.equal(await save(await maskForm(40, 30)), 200);
+          const listed = await send("/api/inventory", { auth: false });
+          assert.equal(listed.data[0].cutouts[0], publicUrl);
+          assert.equal(listed.data[0].cutout, undefined);
+          const file = await send(publicUrl, { auth: false });
+          assert.equal(file.status, 200);
+          assert.match(file.response.headers.get("content-type"), /image\/webp/);
+          assert.equal(
+            (
+              await send(
+                `/media/vehicles/00000000-0000-4000-8000-000000000000/${idPhoto}/cutout.webp`,
+                { auth: false },
+              )
+            ).status,
+            404,
+          );
+          const admin = await send("/api/admin/vehicles");
+          assert.equal(
+            admin.data[0].photos[0].cutoutUrl,
+            `/api/photos/${idPhoto}/cutout`,
+          );
+          assert.equal((await send(url, { method: "DELETE" })).status, 200);
+          assert.equal((await send(publicUrl, { auth: false })).status, 404);
+          assert.equal(
+            (await send("/api/admin/vehicles")).data[0].photos[0].cutoutUrl,
+            null,
+          );
+          assert.equal(
+            (
+              await send(
+                `/api/admin/vehicles/${vehicle}/photos/00000000-0000-4000-8000-000000000000/cutout`,
+                { method: "DELETE" },
+              )
+            ).status,
+            404,
+          );
+          // Kept for the sale test below, which checks that it is withdrawn with the unit.
+          assert.equal(await save(await maskForm(40, 30)), 200);
+        },
+      );
+      await t.test(
+        "background worker has its own policy and can't reach the site's API",
+        async () => {
+          const policy = async (path) =>
+            (await send(path, { auth: false })).response.headers.get(
+              "content-security-policy",
+            );
+          const worker = await policy("/admin/cutout-worker.js");
+          const connect = worker
+            .split(";")
+            .find((part) => part.trim().startsWith("connect-src"));
+          assert.doesNotMatch(connect, /'self'/);
+          assert.match(worker, /default-src 'none'/);
+          const page = await policy("/admin/");
+          assert.match(page, /script-src 'self';/);
+          assert.doesNotMatch(page, /jsdelivr|huggingface|wasm-unsafe-eval/);
+        },
+      );
+      await t.test(
         "expense adds to sale cost and public forms store leads",
         async () => {
           assert.equal(
@@ -288,6 +405,9 @@ test(
             0,
           );
           assert.equal((await send(`/media/vehicles/${vehicle}/${idPhoto}.webp`, {auth:false})).status,404);
+          assert.equal((await send(`/media/vehicles/${vehicle}/${idPhoto}/cutout.webp`, {auth:false})).status,404);
+          assert.equal((await send(`/api/photos/${idPhoto}/cutout`, {auth:false})).status,404);
+          assert.equal((await send(`/api/photos/${idPhoto}/cutout`)).status,200);
           const s = (await send("/api/admin/sales")).data[0];
           assert.equal(Number(s.cost), 15500);
           assert.equal(

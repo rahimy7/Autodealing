@@ -1,0 +1,27 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "preserve",
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "moduleResolution": "bundler",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@/*": ["./src/*"],
+      // @hookform/resolvers imports `zod` without declaring it as a dependency,
+      // so it would otherwise resolve to the hoisted zod v4 (pulled in by
+      // orval/openai) while this app uses v3 — making every zodResolver() call
+      // fail to typecheck. Pin every `zod` import in this program to our v3.
+      "zod": ["./node_modules/zod"]
+    }
+  },
+  "references": [
+    {
+      "path": "../../lib/api-client-react"
+    }
+  ]
+}

@@ -46,6 +46,8 @@ const actions = {
   "sale.cancelled": "Venta anulada",
   "photo.added": "Foto agregada",
   "photo.deleted": "Foto eliminada",
+  "photo.cutout_saved": "Fondo de foto quitado",
+  "photo.cutout_deleted": "Recorte de foto eliminado",
   "photos.reordered": "Fotos reordenadas",
   "expense.created": "Costo registrado",
   "content.updated": "Textos de la página actualizados",
@@ -53,6 +55,15 @@ const actions = {
   "user.created": "Usuario creado",
   "user.active.changed": "Acceso de usuario actualizado",
   "password.changed": "Contraseña actualizada",
+  "reservation.created": "Vehículo reservado",
+  "reservation.released": "Reserva liberada",
+  "reservation.extended": "Reserva extendida",
+  "reservation.expired": "Reserva vencida",
+  "appointment.created": "Cita agendada",
+  "appointment.updated": "Cita actualizada",
+  "lead.assigned": "Consulta asignada",
+  "omnicanal.settings.updated": "Automatización de Omnicanal actualizada",
+  "omnicanal.agent.linked": "Agente de Omnicanal vinculado",
 };
 let user = null,
   page = "dashboard",
@@ -129,10 +140,18 @@ $("loginForm").addEventListener("submit", async (e) => {
     b.disabled = false;
   }
 });
+// Omnicanal's panel opens with this account (/omnicanal/entrar) and keeps its session in this
+// browser; closing the site's session closes that one too. Key: server/omni-embed.js.
+function forgetOmnicanal() {
+  try {
+    localStorage.removeItem("omniai_session");
+  } catch {}
+}
 $("logout").addEventListener("click", async () => {
   try {
     await api("/api/auth/logout", { method: "POST" });
     user = null;
+    forgetOmnicanal();
     showLogin();
   } catch (e) {
     notify(e.message, true);
@@ -181,6 +200,23 @@ async function renderPage() {
   const ticket = ++renderTicket;
   $("content").innerHTML = '<p class="muted">Cargando…</p>';
   try {
+    if (["finance", "performance", "omnicanal"].includes(page)) {
+      const insights = await import("/admin/insights.js");
+      return await insights[page]({
+        api,
+        esc,
+        usd,
+        date,
+        heading,
+        empty,
+        notify,
+        busy,
+        csv,
+        $,
+        current: () => ticket === renderTicket && Boolean(user),
+        rerender: renderPage,
+      });
+    }
     let data;
     if (page === "dashboard") data = await api("/api/admin/dashboard");
     else if (page === "vehicles") vehicles = await api("/api/admin/vehicles");
@@ -406,7 +442,7 @@ function vehicleEditor(tab) {
 function photosTab() {
   const v = editorVehicle;
   $("vehicleTab").innerHTML =
-    `<p class="help">La primera imagen es la portada. Puedes cambiar el orden con las flechas. JPG, PNG o WEBP; hasta 10 MB por archivo y 60 fotos por unidad. Las fotos se guardan en Neon y se optimizan automáticamente.</p><div class="file-upload"><label>Agregar fotografías<input id="photoFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple></label></div><p id="photoStatus" role="status"></p><div class="photo-grid">${v.photos.map((p, i) => `<article class="photo"><img src="${esc(p.url)}" alt="Foto ${i + 1}"><span>${i === 0 ? "PORTADA" : "Foto " + (i + 1)}</span><div class="actions"><button type="button" class="tiny" data-move="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Mover foto ${i + 1} antes">←</button><button type="button" class="tiny" data-move="${i}" data-dir="1" ${i === v.photos.length - 1 ? "disabled" : ""} aria-label="Mover foto ${i + 1} después">→</button><button type="button" class="tiny" data-delete-photo="${p.id}">Quitar</button></div></article>`).join("")}</div>`;
+    `<p class="help">La primera imagen es la portada. Puedes cambiar el orden con las flechas. JPG, PNG o WEBP; hasta 10 MB por archivo y 60 fotos por unidad. Las fotos se guardan en Neon y se optimizan automáticamente. Con «Quitar fondo», los clientes pueden deslizar una cortina que cambia el fondo de esa foto.</p><div class="file-upload"><label>Agregar fotografías<input id="photoFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple></label></div><p id="photoStatus" role="status"></p><div class="photo-grid">${v.photos.map((p, i) => `<article class="photo"><img src="${esc(p.url)}" alt="Foto ${i + 1}"><span>${i === 0 ? "PORTADA" : "Foto " + (i + 1)}</span><div class="actions"><button type="button" class="tiny" data-move="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Mover foto ${i + 1} antes">←</button><button type="button" class="tiny" data-move="${i}" data-dir="1" ${i === v.photos.length - 1 ? "disabled" : ""} aria-label="Mover foto ${i + 1} después">→</button><button type="button" class="tiny" data-delete-photo="${p.id}">Quitar</button></div><button type="button" class="tiny photo-cutout${p.cutoutUrl ? " has-cutout" : ""}" data-cutout="${p.id}">${p.cutoutUrl ? "✓ Ver cortina" : "Quitar fondo"}</button></article>`).join("")}</div>`;
   $("photoFiles").onchange = async (e) => {
     const files = [...e.target.files];
     e.target.disabled = true;
@@ -430,9 +466,24 @@ function photosTab() {
   };
   $("vehicleTab").querySelector(".photo-grid").onclick = async (e) => {
     const move = e.target.closest("[data-move]"),
-      del = e.target.closest("[data-delete-photo]");
-    if (!move && !del) return;
+      del = e.target.closest("[data-delete-photo]"),
+      cutout = e.target.closest("[data-cutout]");
+    if (!move && !del && !cutout) return;
     try {
+      if (cutout) {
+        const { openCutoutDialog } = await import("/admin/cutout.js");
+        openCutoutDialog({
+          vehicleId: v.id,
+          photo: v.photos.find((p) => p.id === cutout.dataset.cutout),
+          api,
+          notify,
+          onChanged: async () => {
+            vehicles = await api("/api/admin/vehicles");
+            openVehicle(v.id, "photos");
+          },
+        });
+        return;
+      }
       if (del) {
         if (!confirm("¿Quitar esta foto del vehículo?")) return;
         await api(
@@ -490,7 +541,7 @@ function salesPage() {
       "Registra operaciones y conserva su historial. Registrar una venta retira el vehículo del catálogo.",
       `<div class="actions"><button class="secondary" id="exportSales">Exportar CSV</button><button class="primary" id="newSale">+ Registrar venta</button></div>`,
     ) +
-    `<div class="panel"><div class="table-wrap"><table><thead><tr><th>Vehículo</th><th>Comprador</th><th>Fecha</th><th>Venta</th>${user.role === "admin" ? "<th>Margen bruto</th>" : ""}<th>Estado</th><th>Acciones</th></tr></thead><tbody>${sales.map((s) => `<tr><td><strong>${esc(s.year + " " + s.make + " " + s.model)}</strong><small>${esc(s.stock)}</small></td><td><strong>${esc(s.buyer_name)}</strong><small>${esc(s.buyer_phone)} ${esc(s.buyer_email)}</small></td><td>${esc(String(s.sold_at).slice(0, 10))}</td><td>${usd(s.price)}</td>${user.role === "admin" ? `<td>${usd(Number(s.price) - Number(s.cost))}</td>` : ""}<td>${s.cancelled_at ? "Anulada" : "Registrada"}</td><td><div class="actions"><button class="tiny" data-sale-detail="${s.id}">Ver detalle</button>${user.role === "admin" && !s.cancelled_at ? `<button class="tiny" data-cancel-sale="${s.id}">Anular</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>${sales.length ? "" : empty("Aún no hay ventas.", "Selecciona una unidad disponible o reservada para registrar la operación.")}</div><p class="help">Registro comercial interno. No genera contratos ni ejecuta cobros. Los costos quedan fijados al registrar la venta; una anulación conserva el historial y devuelve el vehículo a disponible.</p>`;
+    `<div class="panel"><div class="table-wrap"><table><thead><tr><th>Vehículo</th><th>Comprador</th><th>Vendedor</th><th>Fecha</th><th>Venta</th>${user.role === "admin" ? "<th>Margen bruto</th>" : ""}<th>Estado</th><th>Acciones</th></tr></thead><tbody>${sales.map((s) => `<tr><td><strong>${esc(s.year + " " + s.make + " " + s.model)}</strong><small>${esc(s.stock)}</small></td><td><strong>${esc(s.buyer_name)}</strong><small>${esc(s.buyer_phone)} ${esc(s.buyer_email)}</small></td><td>${esc(s.seller_name || "—")}</td><td>${esc(String(s.sold_at).slice(0, 10))}</td><td>${usd(s.price)}</td>${user.role === "admin" ? `<td>${usd(Number(s.price) - Number(s.cost))}</td>` : ""}<td>${s.cancelled_at ? "Anulada" : "Registrada"}</td><td><div class="actions"><button class="tiny" data-sale-detail="${s.id}">Ver detalle</button>${user.role === "admin" && !s.cancelled_at ? `<button class="tiny" data-cancel-sale="${s.id}">Anular</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>${sales.length ? "" : empty("Aún no hay ventas.", "Selecciona una unidad disponible o reservada para registrar la operación.")}</div><p class="help">Registro comercial interno. No genera contratos ni ejecuta cobros. Los costos quedan fijados al registrar la venta; una anulación conserva el historial y devuelve el vehículo a disponible.</p>`;
   $("newSale").onclick = () => saleForm();
   $("exportSales").onclick = () =>
     csv(
@@ -499,6 +550,7 @@ function salesPage() {
         stock: s.stock,
         vehicle: `${s.year} ${s.make} ${s.model}`,
         buyer: s.buyer_name,
+        seller: s.seller_name,
         phone: s.buyer_phone,
         email: s.buyer_email,
         price: s.price,
@@ -516,7 +568,7 @@ function salesPage() {
       const s = sales.find((s) => s.id === detail.dataset.saleDetail);
       dialog(
         "Detalle de venta",
-        `<h3>${esc(s.year + " " + s.make + " " + s.model)} · ${esc(s.stock)}</h3><p>${esc(s.buyer_name)}<br>${esc(s.buyer_phone)}<br>${esc(s.buyer_email)}</p><p>Venta: <strong>${usd(s.price)}</strong>${user.role === "admin" ? `<br>Costo al cierre: ${usd(s.cost)}<br>Margen bruto: ${usd(Number(s.price) - Number(s.cost))}` : ""}</p><p class="lead-detail">${esc(s.notes || "Sin notas adicionales.")}</p><p class="help">${s.cancelled_at ? "Anulada el " + date(s.cancelled_at) : "Registrada el " + date(s.created_at)}</p>`,
+        `<h3>${esc(s.year + " " + s.make + " " + s.model)} · ${esc(s.stock)}</h3><p>${esc(s.buyer_name)}<br>${esc(s.buyer_phone)}<br>${esc(s.buyer_email)}</p><p class="help">Vendedor: ${esc(s.seller_name || "—")}</p><p>Venta: <strong>${usd(s.price)}</strong>${user.role === "admin" ? `<br>Costo al cierre: ${usd(s.cost)}<br>Margen bruto: ${usd(Number(s.price) - Number(s.cost))}` : ""}</p><p class="lead-detail">${esc(s.notes || "Sin notas adicionales.")}</p><p class="help">${s.cancelled_at ? "Anulada el " + date(s.cancelled_at) : "Registrada el " + date(s.created_at)}</p>`,
       );
     }
     if (
@@ -537,7 +589,9 @@ function salesPage() {
     }
   };
 }
-function saleForm(vehicleId = "") {
+async function saleForm(vehicleId = "") {
+  const team =
+    user.role === "admin" ? await api("/api/admin/team").catch(() => []) : [];
   const list = vehicles.filter(
     (v) => !v.demo && ["available", "reserved"].includes(v.status),
   );
@@ -549,7 +603,7 @@ function saleForm(vehicleId = "") {
   const v = list.find((v) => v.id === vehicleId) || list[0];
   dialog(
     "Registrar venta",
-    `<form id="saleForm"><div class="notice">Al guardar, la unidad se marcará como vendida y dejará de aparecer en el catálogo público.</div><div class="form-grid"><label class="wide">Vehículo *<select name="vehicleId" id="saleVehicle">${list.map((x) => `<option value="${x.id}" ${x.id === v.id ? "selected" : ""}>${esc(x.stock + " · " + x.year + " " + x.make + " " + x.model)}</option>`).join("")}</select></label>${field("Precio final (USD) *", "price", v.price, "number", 'required min="0.01" step="0.01"')}${field("Fecha de venta *", "soldAt", today(), "date", "required")}${field("Nombre del comprador *", "buyerName", "", "text", 'required maxlength="160"')}${field("Teléfono", "buyerPhone", "", "tel", 'maxlength="60"')}${field("Email", "buyerEmail", "", "email", 'maxlength="200"')}<label class="wide">Notas internas<textarea name="notes" rows="3" maxlength="4000"></textarea></label></div><p class="error" role="alert"></p><div class="form-footer"><button type="submit" class="primary">Confirmar registro de venta</button></div></form>`,
+    `<form id="saleForm"><div class="notice">Al guardar, la unidad se marcará como vendida y dejará de aparecer en el catálogo público.</div><div class="form-grid"><label class="wide">Vehículo *<select name="vehicleId" id="saleVehicle">${list.map((x) => `<option value="${x.id}" ${x.id === v.id ? "selected" : ""}>${esc(x.stock + " · " + x.year + " " + x.make + " " + x.model)}</option>`).join("")}</select></label>${field("Precio final (USD) *", "price", v.price, "number", 'required min="0.01" step="0.01"')}${field("Fecha de venta *", "soldAt", today(), "date", "required")}${field("Nombre del comprador *", "buyerName", "", "text", 'required maxlength="160"')}${field("Teléfono", "buyerPhone", "", "tel", 'maxlength="60"')}${field("Email", "buyerEmail", "", "email", 'maxlength="200"')}${user.role === "admin" ? select("Vendedor que cierra", "sellerId", [["", "Automático: dueño de la reserva o quien registra"], ...team.map((u) => [u.id, u.name])], "") : ""}<label class="wide">Notas internas<textarea name="notes" rows="3" maxlength="4000"></textarea></label></div><p class="error" role="alert"></p><div class="form-footer"><button type="submit" class="primary">Confirmar registro de venta</button></div></form>`,
   );
   $("saleVehicle").onchange = (e) => {
     $("saleForm").elements.price.value = list.find(
@@ -588,7 +642,7 @@ function leadsPage() {
                   `${{ date: "Fecha", time: "Hora", msg: "Mensaje", year: "Año", make: "Marca", model: "Modelo", miles: "Millaje", condition: "Condición" }[k] || k}: ${v}`,
               )
               .join("\n"),
-          )}</div></td><td>${date(l.created_at)}</td><td><select data-lead="${l.id}" aria-label="Estado de consulta de ${esc(l.name)}">${["new", "contacted", "closed"].map((s) => `<option value="${s}" ${l.status === s ? "selected" : ""}>${statusLabels[s]}</option>`).join("")}</select></td></tr>`,
+          )}</div></td><td>${date(l.created_at)}<br><small>${l.assigned_name ? "Atiende " + esc(l.assigned_name) : "Sin asignar"}</small></td><td><select data-lead="${l.id}" aria-label="Estado de consulta de ${esc(l.name)}">${["new", "contacted", "closed"].map((s) => `<option value="${s}" ${l.status === s ? "selected" : ""}>${statusLabels[s]}</option>`).join("")}</select></td></tr>`,
       )
       .join(
         "",

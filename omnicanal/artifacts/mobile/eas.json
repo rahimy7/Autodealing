@@ -1,0 +1,42 @@
+{
+  // Distribución interna ad hoc. Esto NO reemplaza el flujo de la app: los builds
+  // de tienda se siguen haciendo en local con Xcode y Gradle (ver README). Esto es
+  // solo un canal paralelo para poner el .ipa en un iPhone concreto sin pasar por
+  // TestFlight, útil cuando la revisión de Apple o la asignación de grupos bloquea.
+  "cli": {
+    "version": ">= 20.0.0",
+    // "local" = el número de build sale de app.json, no del servidor de Expo. Es lo
+    // que queremos: quien manda sobre las versiones que van a App Store Connect es
+    // Xcode, y no conviene que EAS lleve un contador propio en paralelo.
+    "appVersionSource": "local"
+  },
+  "build": {
+    // `distribution: internal` es lo que hace que EAS genere un provisioning
+    // profile ad hoc (en vez de uno de App Store) y publique el .ipa detrás de un
+    // enlace instalable. Solo instala en los dispositivos cuyo UDID esté
+    // registrado: ver `eas device:create`.
+    "preview": {
+      // La raíz fija `packageManager: pnpm@11.3.0`, y EAS lo respeta: descarga ese
+      // pnpm exacto. Pero su imagen arranca con Node 20, y pnpm 11 necesita Node
+      // >= 22.13 porque importa `node:sqlite`, que antes no existe — el install
+      // muere en el primer segundo con ERR_UNKNOWN_BUILTIN_MODULE. Hay que pedir
+      // el Node explícitamente, y el mismo que usamos en local.
+      "node": "24.19.0",
+      "distribution": "internal",
+      // `.env` está gitignorado y EAS sube el proyecto desde git, así que esa
+      // variable no viaja con el build: sin ella, src/lib/config.ts cae al fallback
+      // de desarrollo y el .ipa acaba pidiéndole login a http://localhost:8080 —
+      // el propio teléfono. No es un secreto: todo lo que empieza por EXPO_PUBLIC_
+      // queda incrustado en el bundle de JavaScript y es legible por cualquiera.
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://redessociales-production.up.railway.app"
+      },
+      "ios": {
+        "simulator": false
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    }
+  }
+}

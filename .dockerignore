@@ -6,4 +6,16 @@ railway.json
 
 .env
 .env.*
+**/.env
+**/.env.*
 node_modules
+**/node_modules
+
+# Omnicanal is built inside the image (Dockerfile); its local builds and the mobile app's
+# sources stay out. The mobile manifest stays: pnpm's lockfile lists it.
+omnicanal/**/dist
+omnicanal/**/*.tsbuildinfo
+omnicanal/artifacts/mobile/*
+!omnicanal/artifacts/mobile/package.json
+omnicanal/docs
+omnicanal/start.sh

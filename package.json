@@ -8,7 +8,9 @@
   },
   "scripts": {
     "start": "node server/index.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "omnicanal:build": "cd omnicanal && pnpm install --frozen-lockfile && sh build-embedded.sh",
+    "omnicanal:migrate": "node server/omni-migrate.js"
   },
   "dependencies": {
     "express": "^5.1.0",

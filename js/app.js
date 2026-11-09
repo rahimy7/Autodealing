@@ -1,5 +1,6 @@
 import { INVENTORY, INVENTORY_ERROR, DEALER, SHOWCASE, SHOWROOM, CATEGORIES, SPOTLIGHT } from './data.js';
 import { STRINGS } from './i18n.js';
+import { createCurtain } from './curtain.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -292,7 +293,16 @@ function bindTilt() {
 }
 
 // ============================================================ modal
-let currentVehicle = null, lastFocus = null, viewer = null, viewerReady = null, modalTab = 'front';
+let currentVehicle = null, lastFocus = null, viewer = null, viewerReady = null, modalTab = 'front', curtain = null;
+
+function syncCurtain(url) {
+  if (!url) return curtain?.hide();
+  curtain ||= createCurtain($('#mStage'));
+  curtain.show(url, {
+    slider: t('curtain.slider'), group: t('curtain.group'), original: t('curtain.original'),
+    backdrops: { studio: t('curtain.studio'), showroom: t('curtain.showroom'), night: t('curtain.night'), white: t('curtain.white') },
+  });
+}
 
 function fillModal(v, keepTab = false) {
   $('#mKicker').textContent = `${v.year} · ${t('cond.' + v.condition)} · #${v.stock}`;
@@ -326,6 +336,7 @@ function showTab(tab) {
   $$('#mThumbs [data-tab]').forEach((b) => b.setAttribute('aria-selected', b.dataset.tab === tab));
   const imgEl = $('#mImg'), cv = $('#mCanvas');
   if (tab === '3d') {
+    syncCurtain(null);
     imgEl.hidden = true; cv.hidden = false; $('#mHint').hidden = false;
     $('#mLoading').hidden = false;
     viewerReady = viewerReady || import('./viewer3d.js').then((m) => (viewer = m.createViewer(cv)));
@@ -336,6 +347,7 @@ function showTab(tab) {
     imgEl.src = img(v.id, tab.startsWith('photo-') ? Number(tab.slice(6)) : tab);
     imgEl.alt = `${title(v)} — ${tab}`;
     imgEl.style.animation = 'none'; void imgEl.offsetWidth; imgEl.style.animation = '';
+    syncCurtain(tab.startsWith('photo-') ? v.cutouts?.[Number(tab.slice(6))] : null);
   }
 }
 
@@ -358,6 +370,7 @@ function closeModal() {
   m.hidden = true;
   document.body.style.overflow = '';
   if (viewer) viewer.hide();
+  curtain?.hide();
   currentVehicle = null;
   heroVisibility();
   lastFocus?.focus?.({ preventScroll: true });
@@ -790,6 +803,9 @@ function boot() {
   observeReveals(document);
   if (state.view === 'immersive') startHero();
   addEventListener('resize', () => drawSpin(true));
+  // Links shared by the sales team and the virtual agents open that vehicle: /?v=<id>
+  const linked = new URLSearchParams(location.search).get('v');
+  if (linked && byId[linked]) openVehicle(linked);
 }
 
 boot();

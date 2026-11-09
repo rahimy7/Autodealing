@@ -19,6 +19,27 @@ import {
   publicVehicle,
 } from "./domain.js";
 import { CONTENT_KEYS } from "./content.js";
+import { composeCutout } from "./cutout.js";
+import { salesRouter } from "./sales.js";
+import { crmRouter } from "./crm.js";
+import { expireReservations } from "./agenda.js";
+import { workHours, everyWorkSlot } from "./work-hours.js";
+import {
+  pushLead,
+  scheduleInventorySync,
+  markConversationSale,
+  omniEmbedded,
+  attachEmbedded,
+  identityFor,
+} from "./omni-service.js";
+import { EMBED_PREFIX, mintToken } from "./omnicanal.js";
+import {
+  startOmnicanal,
+  omniProxy,
+  handoffPage,
+  handoffCsp,
+  messagePage,
+} from "./omni-embed.js";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const production = process.env.NODE_ENV === "production";
 await initialize();
@@ -28,6 +49,39 @@ app.set("trust proxy", 1);
 app.use(
   helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }),
 );
+// Omnicanal inside this service, under /omnicanal (server/omni-embed.js). Before the body parser:
+// its requests are streamed through untouched.
+const hours = workHours();
+const embedded = omniEmbedded();
+if (embedded) {
+  // The site's account opens the full panel: an administrator as the instance's administrator
+  // (or as their agent, once linked), a salesperson only as the agent they are linked to.
+  app.get(`${EMBED_PREFIX}/entrar`, async (req, res) => {
+    res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+    const user = await principal(req);
+    if (!user) return res.redirect(303, "/admin/");
+    let identity;
+    try {
+      identity = await identityFor(user, { requireAgent: user.role !== "admin" });
+    } catch (error) {
+      res.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
+      return res
+        .status(error.status || 502)
+        .type("html")
+        .send(messagePage("No se pudo abrir Omnicanal", error.message, { href: "/admin/", label: "Volver al panel" }));
+    }
+    // Without a linked agent the panel shows the person's name, not the site's system identity.
+    if (identity.agentId === null) identity = { ...identity, name: user.name };
+    const nonce = randomBytes(16).toString("base64");
+    // Twelve hours, like a sign-in on Omnicanal's own form.
+    const token = mintToken(embedded.secret, identity, 12 * 60 * 60);
+    res
+      .set("Content-Security-Policy", handoffCsp(nonce))
+      .type("html")
+      .send(handoffPage({ token, user: identity }, nonce));
+  });
+  app.use(EMBED_PREFIX, omniProxy({ port: embedded.embedded.port }));
+}
 app.use(express.json({ limit: "128kb" }));
 app.use("/api", (_, res, next) => {
   res.set("Cache-Control", "no-store");
@@ -63,6 +117,12 @@ const leadsLimit = rateLimit({
   legacyHeaders: false,
   message: { error: "Demasiadas solicitudes. Inténtalo más tarde." },
 });
+// The background-removal worker runs third-party code, so it can only reach the hosts of that code
+// and its model. It can't call this site's API: the page hands it each photo.
+// Updating the library in admin/cutout-worker.js can change the onnxruntime-web version it loads.
+const CUTOUT_WORKER_CDN =
+  "https://cdn.jsdelivr.net/npm/@huggingface/ https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.0-dev.20260914-8d85527a0/";
+const CUTOUT_WORKER_CSP = `default-src 'none'; script-src 'self' ${CUTOUT_WORKER_CDN} 'wasm-unsafe-eval'; connect-src ${CUTOUT_WORKER_CDN} https://huggingface.co https://*.huggingface.co https://*.hf.co`;
 const hash = (v) => createHash("sha256").update(v).digest("hex");
 const cookieToken = (req) => {
   const entry = (req.get("cookie") || "")
@@ -214,9 +274,18 @@ app.post("/api/auth/password", auth, async (req, res) => {
   });
   res.json({ ok: true });
 });
+// A visit already wakes the database, so the public catalogue releases ended reservations itself
+// (at most every five minutes) instead of showing them until the next working hour.
+let publicExpiryAt = 0;
 app.get("/api/inventory", async (_, res) => {
+  if (Date.now() - publicExpiryAt > 5 * 60 * 1000) {
+    publicExpiryAt = Date.now();
+    await expireReservations().catch((e) =>
+      console.error("Reservation expiry failed:", e.code || e.name),
+    );
+  }
   const { rows } = await query(
-    "SELECT v.*,coalesce((SELECT json_agg(json_build_object('id',p.id) ORDER BY p.position,p.created_at) FROM vehicle_photos p WHERE p.vehicle_id=v.id),'[]') photos FROM vehicles v WHERE status IN ('available','reserved') ORDER BY created_at DESC",
+    "SELECT v.*,coalesce((SELECT json_agg(json_build_object('id',p.id,'cutout',p.cutout IS NOT NULL) ORDER BY p.position,p.created_at) FROM vehicle_photos p WHERE p.vehicle_id=v.id),'[]') photos FROM vehicles v WHERE status IN ('available','reserved') ORDER BY created_at DESC",
   );
   res.json(rows.map((v) => publicVehicle(v, v.photos)));
 });
@@ -235,6 +304,21 @@ app.get("/api/photos/:id", checkId, async (req, res) => {
   res.set("Cache-Control", "private, no-cache");
   res.send(p.image);
 });
+app.get("/api/photos/:id/cutout", checkId, async (req, res) => {
+  const { rows } = await query(
+    "SELECT p.cutout,v.status FROM vehicle_photos p JOIN vehicles v ON v.id=p.vehicle_id WHERE p.id=$1 AND p.cutout IS NOT NULL",
+    [req.params.id],
+  );
+  const p = rows[0];
+  if (
+    !p ||
+    (!["available", "reserved"].includes(p.status) && !(await principal(req)))
+  )
+    return res.sendStatus(404);
+  res.type("image/webp");
+  res.set("Cache-Control", "private, no-cache");
+  res.send(p.cutout);
+});
 // Public vehicle folders are withdrawn immediately when the unit is sold.
 app.get("/media/vehicles/:vehicleId/:photoId.webp", async (req, res) => {
   if (!isUuid(req.params.vehicleId) || !isUuid(req.params.photoId)) return res.sendStatus(404);
@@ -245,6 +329,16 @@ app.get("/media/vehicles/:vehicleId/:photoId.webp", async (req, res) => {
   if (!rows[0]) return res.sendStatus(404);
   res.set("Cache-Control", "no-store");
   res.type(rows[0].mime).send(rows[0].image);
+});
+app.get("/media/vehicles/:vehicleId/:photoId/cutout.webp", async (req, res) => {
+  if (!isUuid(req.params.vehicleId) || !isUuid(req.params.photoId)) return res.sendStatus(404);
+  const { rows } = await query(
+    "SELECT p.cutout FROM vehicle_photos p JOIN vehicles v ON v.id=p.vehicle_id WHERE p.id=$1 AND v.id=$2 AND p.cutout IS NOT NULL AND v.status IN ('available','reserved')",
+    [req.params.photoId, req.params.vehicleId],
+  );
+  if (!rows[0]) return res.sendStatus(404);
+  res.set("Cache-Control", "no-store");
+  res.type("image/webp").send(rows[0].cutout);
 });
 app.get("/api/content", async (_, res) => {
   res.json(
@@ -290,13 +384,24 @@ app.post("/api/leads", leadsLimit, async (req, res) => {
       (k) => [k, text(b[k], k === "msg" ? 3000 : 100)],
     ),
   );
+  const leadId = randomUUID();
   await query(
     "INSERT INTO leads(id,kind,name,phone,email,vehicle_id,data) VALUES($1,$2,$3,$4,$5,$6,$7)",
-    [randomUUID(), kind, name, phone, email, vehicle, JSON.stringify(data)],
+    [leadId, kind, name, phone, email, vehicle, JSON.stringify(data)],
   );
   res.status(201).json({ ok: true });
+  // The inquiry also becomes a contact in Omnicanal's CRM. The visitor never waits on it.
+  void pushLead(leadId);
 });
 app.use("/api/admin", auth);
+// Any change to what is for sale refreshes the inventory the virtual agents answer with.
+app.use("/api/admin", (req, res, next) => {
+  if (req.method !== "GET" && /^\/(vehicles|sales|reservations)(\/|$)/.test(req.path))
+    res.on("finish", () => {
+      if (res.statusCode < 400) scheduleInventorySync();
+    });
+  next();
+});
 app.get("/api/admin/dashboard", async (req, res) => {
   const [{ rows: counts }, { rows: sales }, { rows: leads }, { rows: recent }] =
     await Promise.all([
@@ -335,7 +440,7 @@ function vehicleView(v, role) {
 }
 app.get("/api/admin/vehicles", async (req, res) => {
   const { rows } = await query(
-    "SELECT v.*,coalesce((SELECT json_agg(json_build_object('id',p.id,'url','/api/photos/'||p.id) ORDER BY p.position,p.created_at) FROM vehicle_photos p WHERE p.vehicle_id=v.id),'[]') photos FROM vehicles v ORDER BY created_at DESC",
+    "SELECT v.*,coalesce((SELECT json_agg(json_build_object('id',p.id,'url','/api/photos/'||p.id,'cutoutUrl',CASE WHEN p.cutout IS NOT NULL THEN '/api/photos/'||p.id||'/cutout' END) ORDER BY p.position,p.created_at) FROM vehicle_photos p WHERE p.vehicle_id=v.id),'[]') photos FROM vehicles v ORDER BY created_at DESC",
   );
   res.json(rows.map((v) => vehicleView(v, req.user.role)));
 });
@@ -372,6 +477,17 @@ app.put("/api/admin/vehicles/:id", checkId, async (req, res) => {
         409,
       );
     if (req.user.role !== "admin") v.purchaseCost = Number(old.purchase_cost);
+    if (old.status === "reserved" && v.status !== "reserved") {
+      const { rows: held } = await c.query(
+        "SELECT r.customer_name,u.name FROM reservations r JOIN admin_users u ON u.id=r.seller_id WHERE r.vehicle_id=$1 AND r.status='active'",
+        [old.id],
+      );
+      if (held[0])
+        throw new InputError(
+          `${held[0].name} tiene este vehículo reservado. Libera la reserva desde la app de ventas antes de cambiar su estado.`,
+          409,
+        );
+    }
     await c.query(
       "UPDATE vehicles SET stock=$1,vin=$2,status=$3,data=$4,purchase_cost=$5,version=version+1,updated_at=now() WHERE id=$6",
       [
@@ -428,6 +544,44 @@ app.delete(
         [req.params.photoId, req.params.id],
       );
       await audit(c, req.user, "photo.deleted", req.params.id);
+    });
+    res.json({ ok: true });
+  },
+);
+app.put(
+  "/api/admin/vehicles/:id/photos/:photoId/cutout",
+  checkId,
+  upload.single("mask"),
+  async (req, res) => {
+    if (!req.file) throw new InputError("Falta la máscara de la foto.");
+    const { rows } = await query(
+      "SELECT image FROM vehicle_photos WHERE id=$1 AND vehicle_id=$2",
+      [req.params.photoId, req.params.id],
+    );
+    if (!rows[0]) throw new InputError("Foto no encontrada.", 404);
+    const cutout = await composeCutout(rows[0].image, req.file.buffer);
+    await transaction(async (c) => {
+      const updated = await c.query(
+        "UPDATE vehicle_photos SET cutout=$1 WHERE id=$2 AND vehicle_id=$3",
+        [cutout, req.params.photoId, req.params.id],
+      );
+      if (!updated.rowCount) throw new InputError("Foto no encontrada.", 404);
+      await audit(c, req.user, "photo.cutout_saved", req.params.id);
+    });
+    res.json({ cutoutUrl: `/api/photos/${req.params.photoId}/cutout` });
+  },
+);
+app.delete(
+  "/api/admin/vehicles/:id/photos/:photoId/cutout",
+  checkId,
+  async (req, res) => {
+    await transaction(async (c) => {
+      const updated = await c.query(
+        "UPDATE vehicle_photos SET cutout=NULL WHERE id=$1 AND vehicle_id=$2",
+        [req.params.photoId, req.params.id],
+      );
+      if (!updated.rowCount) throw new InputError("Foto no encontrada.", 404);
+      await audit(c, req.user, "photo.cutout_deleted", req.params.id);
     });
     res.json({ ok: true });
   },
@@ -502,7 +656,7 @@ app.post(
 );
 app.get("/api/admin/sales", async (req, res) => {
   const { rows } = await query(
-    "SELECT s.*,v.stock,v.data->>'make' make,v.data->>'model' model,v.data->>'year' AS \"year\" FROM sales s JOIN vehicles v ON v.id=s.vehicle_id ORDER BY s.created_at DESC",
+    "SELECT s.*,v.stock,v.data->>'make' make,v.data->>'model' model,v.data->>'year' AS \"year\",su.name seller_name FROM sales s JOIN vehicles v ON v.id=s.vehicle_id LEFT JOIN admin_users su ON su.id=coalesce(s.seller_id,s.created_by) ORDER BY s.created_at DESC",
   );
   res.json(
     rows.map((s) => {
@@ -516,6 +670,9 @@ app.post("/api/admin/sales", async (req, res) => {
     throw new InputError("Selecciona un vehículo.");
   const sale = saleInput(req.body),
     id = randomUUID();
+  if (req.body.sellerId != null && req.body.sellerId !== "" && !isUuid(req.body.sellerId))
+    throw new InputError("Vendedor inválido.");
+  let fromChat = null;
   await transaction(async (c) => {
     const { rows } = await c.query(
       "SELECT * FROM vehicles WHERE id=$1 FOR UPDATE",
@@ -537,8 +694,26 @@ app.post("/api/admin/sales", async (req, res) => {
       [v.id],
     );
     const cost = Number(v.purchase_cost) + Number(costs[0].total);
+    // A live reservation belongs to its salesperson: only they or administration can close it,
+    // and the sale is credited to them unless administration names someone else.
+    const { rows: held } = await c.query(
+      "SELECT r.id,r.seller_id,r.omni_conversation_id,r.expires_at>now() live,u.name FROM reservations r JOIN admin_users u ON u.id=r.seller_id WHERE r.vehicle_id=$1 AND r.status='active'",
+      [v.id],
+    );
+    const hold = held[0];
+    if (hold?.live && req.user.role !== "admin" && hold.seller_id !== req.user.id)
+      throw new InputError(`Este vehículo está reservado por ${hold.name}.`, 409);
+    let sellerId = hold?.live ? hold.seller_id : req.user.id;
+    if (req.user.role === "admin" && req.body.sellerId) {
+      const { rows: seller } = await c.query(
+        "SELECT id FROM admin_users WHERE id=$1 AND active",
+        [req.body.sellerId],
+      );
+      if (!seller.length) throw new InputError("Vendedor no encontrado o desactivado.");
+      sellerId = req.body.sellerId;
+    }
     await c.query(
-      "INSERT INTO sales(id,vehicle_id,price,cost,buyer_name,buyer_phone,buyer_email,notes,sold_at,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+      "INSERT INTO sales(id,vehicle_id,price,cost,buyer_name,buyer_phone,buyer_email,notes,sold_at,created_by,seller_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
       [
         id,
         v.id,
@@ -550,8 +725,17 @@ app.post("/api/admin/sales", async (req, res) => {
         sale.notes,
         sale.soldAt,
         req.user.id,
+        sellerId,
       ],
     );
+    if (hold) {
+      await c.query(
+        "UPDATE reservations SET status=$2,sale_id=CASE WHEN $2='converted' THEN $3::uuid END,closed_at=now(),closed_by=$4 WHERE id=$1",
+        [hold.id, hold.live ? "converted" : "expired", id, req.user.id],
+      );
+      if (hold.live && hold.omni_conversation_id)
+        fromChat = { conversationId: hold.omni_conversation_id, sellerId, vehicle: v.data };
+    }
     await c.query(
       "UPDATE vehicles SET status='sold',version=version+1,updated_at=now() WHERE id=$1",
       [v.id],
@@ -559,6 +743,7 @@ app.post("/api/admin/sales", async (req, res) => {
     await audit(c, req.user, "sale.created", id);
   });
   res.status(201).json({ id });
+  if (fromChat) void markConversationSale(fromChat);
 });
 app.post("/api/admin/sales/:id/cancel", checkId, admin, async (req, res) => {
   await transaction(async (c) => {
@@ -586,7 +771,7 @@ app.get("/api/admin/leads", async (_, res) =>
   res.json(
     (
       await query(
-        "SELECT l.*,v.stock,v.data->>'make' make,v.data->>'model' model FROM leads l LEFT JOIN vehicles v ON v.id=l.vehicle_id ORDER BY l.created_at DESC LIMIT 500",
+        "SELECT l.*,v.stock,v.data->>'make' make,v.data->>'model' model,v.data->>'year' AS \"year\",au.name assigned_name FROM leads l LEFT JOIN vehicles v ON v.id=l.vehicle_id LEFT JOIN admin_users au ON au.id=l.assigned_to ORDER BY l.created_at DESC LIMIT 500",
       )
     ).rows,
   ),
@@ -714,20 +899,34 @@ app.put("/api/admin/users/:id/active", checkId, admin, async (req, res) => {
   });
   res.json({ ok: true });
 });
+app.use("/api/admin", salesRouter({ admin, audit, checkId }));
+app.use("/api/admin/crm", crmRouter({ admin, audit }));
 app.use("/api", (_, res) =>
   res.status(404).json({ error: "Ruta no encontrada." }),
 );
+const APP_CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 app.use(
   "/admin",
-  (_, res, next) => {
+  (req, res, next) => {
     res.set("Cache-Control", "no-store");
     res.set(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      req.path === "/cutout-worker.js" ? CUTOUT_WORKER_CSP : APP_CSP,
     );
     next();
   },
   express.static(path.join(root, "admin"), { index: "index.html" }),
+);
+// The salespeople's app: same session and API as the panel, built for the phone.
+app.use(
+  "/ventas",
+  (_req, res, next) => {
+    res.set("Cache-Control", "no-store");
+    res.set("Content-Security-Policy", APP_CSP);
+    next();
+  },
+  express.static(path.join(root, "ventas"), { index: "index.html" }),
 );
 for (const folder of ["css", "js", "img"])
   app.use("/" + folder, express.static(path.join(root, folder), { maxAge: 0 }));
@@ -760,6 +959,18 @@ app.use((err, req, res, next) => {
 const server = app.listen(Number(process.env.PORT) || 8080, "0.0.0.0", () =>
   console.log("Premier server ready"),
 );
-process.on("SIGTERM", () =>
-  server.close(() => pool.end().then(() => process.exit(0))),
-);
+const omnicanal = embedded ? startOmnicanal(embedded, { hours }) : null;
+if (omnicanal) attachEmbedded(omnicanal.state);
+// Reservations that reached their date return to the catalogue even if nobody opens the app:
+// at start, once an hour within the team's hours (server/work-hours.js), and before the sales
+// app or the public catalogue shows them. Outside those hours nothing here wakes the database.
+const expireSoon = () =>
+  expireReservations().catch((e) =>
+    console.error("Reservation expiry failed:", e.code || e.name),
+  );
+expireSoon();
+everyWorkSlot(hours, expireSoon);
+process.on("SIGTERM", () => {
+  const stopped = omnicanal ? omnicanal.stop() : Promise.resolve();
+  server.close(() => Promise.all([pool.end(), stopped]).then(() => process.exit(0)));
+});

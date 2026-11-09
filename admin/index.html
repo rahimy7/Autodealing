@@ -7,6 +7,7 @@
     <title>Administración | Premier Line Motors</title>
     <link rel="icon" href="/api/site/logo" />
     <link rel="stylesheet" href="/admin/admin.css" />
+    <link rel="stylesheet" href="/css/curtain.css" />
     <script type="module" src="/admin/admin.js"></script>
   </head>
   <body>
@@ -48,13 +49,17 @@
           ><button data-page="vehicles">▧ <span>Inventario</span></button
           ><button data-page="sales">↗ <span>Ventas</span></button
           ><button data-page="leads">◌ <span>Consultas</span></button
+          ><button data-page="finance" data-admin>$ <span>Finanzas</span></button
+          ><button data-page="performance" data-admin>▲ <span>Desempeño</span></button
+          ><button data-page="omnicanal" data-admin>◍ <span>Omnicanal</span></button
           ><button data-page="settings" data-admin>
             ⚙ <span>Página web</span></button
           ><button data-page="users" data-admin>♙ <span>Equipo</span></button
           ><button data-page="account">◎ <span>Mi cuenta</span></button>
         </nav>
         <div class="sidebar-bottom">
-          <a href="/" target="_blank" rel="noopener">Ver sitio público ↗</a
+          <a href="/ventas/">App de ventas ↗</a
+          ><a href="/" target="_blank" rel="noopener">Ver sitio público ↗</a
           ><button id="logout">Cerrar sesión</button>
         </div>
       </aside>
@@ -80,5 +85,6 @@
       </div>
       <div id="editorBody"></div>
     </dialog>
+    <dialog id="cutoutDialog"></dialog>
   </body>
 </html>

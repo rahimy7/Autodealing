@@ -1,0 +1,86 @@
+{
+  "expo": {
+    "name": "OmniAI",
+    "slug": "omniai",
+    "scheme": "omniai",
+    "version": "1.0.1",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "backgroundColor": "#F9F9FC",
+    "primaryColor": "#0FB3AE",
+    "icon": "./assets/icon.png",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.rvrservice.omniai",
+      "buildNumber": "2",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.rvrservice.omniai",
+      "versionCode": 2,
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "POST_NOTIFICATIONS",
+        "VIBRATE"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1B2440"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "$(PRODUCT_NAME) usa tus fotos para enviarlas a los clientes en el chat.",
+          "cameraPermission": "$(PRODUCT_NAME) usa la cámara para tomar fotos y enviarlas a los clientes en el chat.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0FB3AE",
+          "defaultChannel": "messages"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#1B2440"
+        }
+      ],
+      "./plugins/withReleaseSigning",
+      "./plugins/withApnsProduction"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "84baf723-e594-4d3a-b2ec-771f8e29ecad"
+      }
+    },
+    "owner": "rahimy"
+  }
+}

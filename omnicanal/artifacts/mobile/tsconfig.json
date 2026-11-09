@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["app/**/*", "src/**/*", "*.d.ts"],
+  "exclude": ["node_modules", ".expo", "android", "ios"],
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "lib": ["esnext", "dom"],
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "types": ["react"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "references": [
+    {
+      "path": "../../lib/api-client-react"
+    }
+  ]
+}

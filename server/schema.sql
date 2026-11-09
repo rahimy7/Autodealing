@@ -6,6 +6,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS vehicles_stock ON vehicles(lower(stock));
 CREATE UNIQUE INDEX IF NOT EXISTS vehicles_vin ON vehicles(lower(vin)) WHERE vin<>'';
 CREATE TABLE IF NOT EXISTS vehicle_photos (id uuid PRIMARY KEY,vehicle_id uuid NOT NULL REFERENCES vehicles(id),image bytea NOT NULL,mime text NOT NULL,position integer NOT NULL DEFAULT 0,created_at timestamptz NOT NULL DEFAULT now());
 CREATE INDEX IF NOT EXISTS photos_vehicle ON vehicle_photos(vehicle_id,position,created_at);
+ALTER TABLE vehicle_photos ADD COLUMN IF NOT EXISTS cutout bytea;
 CREATE TABLE IF NOT EXISTS vehicle_expenses (id uuid PRIMARY KEY,vehicle_id uuid NOT NULL REFERENCES vehicles(id),description text NOT NULL,amount numeric(14,2) NOT NULL CHECK(amount>0),expense_date date NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS sales (id uuid PRIMARY KEY,vehicle_id uuid NOT NULL REFERENCES vehicles(id),price numeric(14,2) NOT NULL CHECK(price>0),cost numeric(14,2) NOT NULL CHECK(cost>=0),buyer_name text NOT NULL,buyer_phone text NOT NULL DEFAULT '',buyer_email text NOT NULL DEFAULT '',notes text NOT NULL DEFAULT '',sold_at date NOT NULL,created_by uuid NOT NULL REFERENCES admin_users(id),cancelled_at timestamptz,created_at timestamptz NOT NULL DEFAULT now());
 CREATE UNIQUE INDEX IF NOT EXISTS sales_active_vehicle ON sales(vehicle_id) WHERE cancelled_at IS NULL;
@@ -13,3 +14,15 @@ CREATE TABLE IF NOT EXISTS leads (id uuid PRIMARY KEY,kind text NOT NULL CHECK(k
 CREATE TABLE IF NOT EXISTS settings (id text PRIMARY KEY,value jsonb NOT NULL);
 CREATE TABLE IF NOT EXISTS site_assets (id text PRIMARY KEY,image bytea NOT NULL,mime text NOT NULL,updated_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS audit_log (id bigserial PRIMARY KEY,user_id uuid REFERENCES admin_users(id),action text NOT NULL,entity_id text,created_at timestamptz NOT NULL DEFAULT now());
+-- Sales app and Omnicanal integration. Additive only: earlier rows keep working unchanged.
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS omni_agent_id integer;
+CREATE UNIQUE INDEX IF NOT EXISTS admin_users_omni_agent ON admin_users(omni_agent_id) WHERE omni_agent_id IS NOT NULL;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS seller_id uuid REFERENCES admin_users(id);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS assigned_to uuid REFERENCES admin_users(id);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS omni_contact_id integer;
+CREATE TABLE IF NOT EXISTS reservations (id uuid PRIMARY KEY,vehicle_id uuid NOT NULL REFERENCES vehicles(id),seller_id uuid NOT NULL REFERENCES admin_users(id),customer_name text NOT NULL,customer_phone text NOT NULL DEFAULT '',customer_email text NOT NULL DEFAULT '',deposit numeric(14,2) NOT NULL DEFAULT 0 CHECK(deposit>=0),notes text NOT NULL DEFAULT '',expires_at timestamptz NOT NULL,status text NOT NULL DEFAULT 'active' CHECK(status IN ('active','released','expired','converted')),sale_id uuid REFERENCES sales(id),omni_conversation_id integer,created_by uuid NOT NULL REFERENCES admin_users(id),created_at timestamptz NOT NULL DEFAULT now(),closed_at timestamptz,closed_by uuid REFERENCES admin_users(id));
+CREATE UNIQUE INDEX IF NOT EXISTS reservations_active_vehicle ON reservations(vehicle_id) WHERE status='active';
+CREATE INDEX IF NOT EXISTS reservations_seller ON reservations(seller_id,created_at);
+CREATE TABLE IF NOT EXISTS appointments (id uuid PRIMARY KEY,kind text NOT NULL CHECK(kind IN ('testdrive','visit','delivery','call','followup')),starts_at timestamptz NOT NULL,duration_minutes integer NOT NULL DEFAULT 60 CHECK(duration_minutes BETWEEN 5 AND 600),seller_id uuid REFERENCES admin_users(id),vehicle_id uuid REFERENCES vehicles(id),lead_id uuid REFERENCES leads(id),customer_name text NOT NULL,customer_phone text NOT NULL DEFAULT '',customer_email text NOT NULL DEFAULT '',notes text NOT NULL DEFAULT '',status text NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','confirmed','completed','cancelled','no_show')),omni_appointment_id integer,omni_contact_id integer,omni_conversation_id integer,sync_error text,created_by uuid NOT NULL REFERENCES admin_users(id),created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS appointments_time ON appointments(starts_at);
+CREATE UNIQUE INDEX IF NOT EXISTS appointments_omni ON appointments(omni_appointment_id) WHERE omni_appointment_id IS NOT NULL;

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#101721" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Ventas" />
+    <title>Ventas | Premier Line Motors</title>
+    <link rel="icon" href="/api/site/logo" />
+    <link rel="manifest" href="/ventas/manifest.webmanifest" />
+    <link rel="stylesheet" href="/ventas/ventas.css" />
+    <script type="module" src="/ventas/ventas.js"></script>
+  </head>
+  <body>
+    <div id="loginView" class="login" hidden>
+      <form id="loginForm" class="login-card">
+        <img src="/api/site/logo" alt="Premier Line Motors" />
+        <p class="eyebrow">APP DE VENTAS</p>
+        <h1>Catálogo, agenda y clientes en tu mano.</h1>
+        <label>Usuario<input name="username" autocomplete="username" required maxlength="80" /></label>
+        <label>Contraseña<input name="password" type="password" autocomplete="current-password" required maxlength="128" /></label>
+        <button class="primary block" type="submit">Entrar →</button>
+        <p id="loginError" class="error" role="alert"></p>
+      </form>
+    </div>
+
+    <div id="appView" class="shell" hidden>
+      <aside class="rail" aria-label="Secciones">
+        <img class="rail-logo" src="/api/site/logo" alt="Premier Line Motors" />
+        <nav id="nav"></nav>
+        <div class="rail-foot">
+          <a href="/admin/" id="adminLink">Panel de administración ↗</a>
+        </div>
+      </aside>
+      <header class="bar">
+        <div>
+          <p class="eyebrow" id="barEyebrow">PREMIER LINE MOTORS</p>
+          <h1 id="pageTitle">Hoy</h1>
+        </div>
+        <button id="meButton" class="me" type="button" aria-label="Mi cuenta"></button>
+      </header>
+      <main id="content" class="content" aria-live="polite"></main>
+      <nav id="tabs" class="tabs" aria-label="Secciones"></nav>
+    </div>
+
+    <dialog id="sheet" aria-labelledby="sheetTitle">
+      <div class="sheet-head">
+        <h2 id="sheetTitle"></h2>
+        <button id="sheetClose" type="button" class="icon" aria-label="Cerrar">×</button>
+      </div>
+      <div id="sheetBody" class="sheet-body"></div>
+    </dialog>
+    <div id="toast" role="status" hidden></div>
+  </body>
+</html>

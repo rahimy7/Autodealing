@@ -120,6 +120,9 @@ export function publicVehicle(row, photos) {
     vin: row.vin,
     status: row.status,
     photos: photos.map((p) => `/media/vehicles/${row.id}/${p.id}.webp`),
+    cutouts: photos.map((p) =>
+      p.cutout ? `/media/vehicles/${row.id}/${p.id}/cutout.webp` : null,
+    ),
     live: true,
   };
 }
@@ -141,3 +144,80 @@ export function saleInput(b) {
     soldAt,
   };
 }
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const optionalId = (v, label) => {
+  if (v === undefined || v === null || v === "") return null;
+  if (!isUuid(v)) throw new InputError(`${label} inválido.`);
+  return v;
+};
+const optionalCount = (v) => {
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n <= 0 || n > 2147483647)
+    throw new InputError("Referencia de Omnicanal inválida.");
+  return n;
+};
+function customer(b) {
+  const name = text(b.customerName, 160),
+    phone = text(b.customerPhone, 60),
+    email = text(b.customerEmail, 200);
+  if (!name) throw new InputError("Indica el nombre del cliente.");
+  if (!phone && !email)
+    throw new InputError("Indica el teléfono o el email del cliente.");
+  if (email && !EMAIL.test(email)) throw new InputError("Email inválido.");
+  return { customerName: name, customerPhone: phone, customerEmail: email };
+}
+export const RESERVATION_MAX_DAYS = 30;
+export function reservationInput(b) {
+  return {
+    ...customer(b),
+    deposit: money(b.deposit ?? 0),
+    days: integer(b.days ?? 3, 1, RESERVATION_MAX_DAYS, "Plazo de reserva"),
+    notes: text(b.notes, 2000),
+    sellerId: optionalId(b.sellerId, "Vendedor"),
+    omniConversationId: optionalCount(b.omniConversationId),
+  };
+}
+export const APPOINTMENT_KINDS = ["testdrive", "visit", "delivery", "call", "followup"];
+export const APPOINTMENT_STATUSES = ["scheduled", "confirmed", "completed", "cancelled", "no_show"];
+// Dates and times are the dealership's wall clock; the database turns them into an instant.
+function localSlot(b) {
+  const date = text(b.date, 10),
+    time = text(b.time, 5);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date + "T00:00:00Z")))
+    throw new InputError("Fecha de la cita inválida.");
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))
+    throw new InputError("Hora de la cita inválida.");
+  return { date, time };
+}
+export function appointmentInput(b) {
+  if (!APPOINTMENT_KINDS.includes(b.kind))
+    throw new InputError("Tipo de cita inválido.");
+  return {
+    kind: b.kind,
+    ...localSlot(b),
+    durationMinutes: integer(b.durationMinutes ?? 60, 15, 600, "Duración"),
+    ...customer(b),
+    notes: text(b.notes, 2000),
+    vehicleId: optionalId(b.vehicleId, "Vehículo"),
+    leadId: optionalId(b.leadId, "Consulta"),
+    sellerId: optionalId(b.sellerId, "Vendedor"),
+    omniConversationId: optionalCount(b.omniConversationId),
+  };
+}
+export function appointmentUpdate(b) {
+  const out = {};
+  if (b.status !== undefined) {
+    if (!APPOINTMENT_STATUSES.includes(b.status))
+      throw new InputError("Estado de la cita inválido.");
+    out.status = b.status;
+  }
+  if (b.date !== undefined || b.time !== undefined) Object.assign(out, localSlot(b));
+  if (b.durationMinutes !== undefined)
+    out.durationMinutes = integer(b.durationMinutes, 15, 600, "Duración");
+  if (b.notes !== undefined) out.notes = text(b.notes, 2000);
+  if (b.sellerId !== undefined) out.sellerId = optionalId(b.sellerId, "Vendedor");
+  if (!Object.keys(out).length) throw new InputError("No hay cambios que guardar.");
+  return out;
+}
+export const phoneDigits = (v) => String(v ?? "").replace(/\D/g, "");

@@ -1,6 +1,11 @@
 .git
 .env
 .env.*
+**/.env
+**/.env.*
 node_modules
+**/node_modules
 tools
 README.md
+omnicanal/**/dist
+omnicanal/**/*.tsbuildinfo
