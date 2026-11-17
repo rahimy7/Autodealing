@@ -12,7 +12,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/curtain.css">
-  <style>.premier-brand-logo{display:block;width:170px;height:64px;object-fit:contain}[data-view="classic"] .premier-brand-logo{background:#08090d;border-radius:6px;padding:3px}.loader-brand{font-size:clamp(20px,4vw,34px)}</style>
+  <link rel="stylesheet" href="css/mascot.css">
+  <style>.premier-brand-logo{display:block;width:170px;height:64px;object-fit:contain}[data-view="classic"] .premier-brand-logo{background:#08090d;border-radius:6px;padding:3px}</style>
   <script>
     // apply saved view before first paint (no flash)
     try { const v = localStorage.getItem('novara:view'); if (v === 'classic' || v === 'immersive') document.documentElement.dataset.view = v; } catch (e) {}
@@ -35,6 +36,10 @@
 
   <!-- ============ LOADER (immersive) ============ -->
   <div class="loader only-immersive" id="loader" aria-hidden="true">
+    <div class="loader-logo">
+      <img class="premier-brand-logo" src="img/premier-logo.webp" alt="" width="2048" height="768" fetchpriority="high">
+      <span class="loader-shine"></span>
+    </div>
     <div class="loader-gauge">
       <svg viewBox="0 0 200 200">
         <defs>
@@ -46,7 +51,6 @@
       </svg>
       <div class="loader-read"><span id="loaderNum">0</span><small>MPH</small></div>
     </div>
-    <p class="loader-brand">PREMIER<span>MOTORS</span></p>
     <p class="loader-tag" data-i18n="loader.tag">Warming up the showroom</p>
   </div>
 
@@ -67,7 +71,7 @@
   <header class="nav" id="nav">
     <div class="container nav-inner">
       <a class="brand" href="#top" aria-label="Premier Line Motors — home">
-        <img class="premier-brand-logo" src="img/premier-logo.png" alt="Premier Line Motors" width="2048" height="768">
+        <img class="premier-brand-logo" src="img/premier-logo.webp" alt="Premier Line Motors" width="2048" height="768">
       </a>
       <nav class="nav-links" id="navLinks" aria-label="Primary">
         <a href="#inventory" data-i18n="nav.inventory">Inventory</a>
@@ -104,8 +108,11 @@
         <canvas id="heroCanvas" aria-label="Interactive 3D vehicle. Drag to rotate."></canvas>
         <div class="hero-fade" aria-hidden="true"></div>
         <div class="container hero-grid">
+          <div class="hero-brand reveal-hero">
+            <img class="premier-brand-logo" src="img/premier-logo.webp" alt="Premier Line Motors" width="2048" height="768" fetchpriority="high">
+            <p class="eyebrow"><span class="pulse"></span><span data-i18n="hero.eyebrow">2026 Collection · Paterson, NJ</span></p>
+          </div>
           <div class="hero-copy">
-            <p class="eyebrow reveal-hero"><span class="pulse"></span><span data-i18n="hero.eyebrow">2026 Collection · Paterson, NJ</span></p>
             <h1 class="hero-title">
               <span class="line"><span data-i18n="hero.t1">Drive the</span></span>
               <span class="line"><span class="grad" data-i18n="hero.t2">Extraordinary</span></span>
@@ -477,7 +484,7 @@
     <div class="container footer-grid">
       <div class="footer-brand">
         <a class="brand" href="#top" aria-label="Premier Line Motors">
-          <img class="premier-brand-logo" src="img/premier-logo.png" alt="Premier Line Motors" width="2048" height="768">
+          <img class="premier-brand-logo" src="img/premier-logo.webp" alt="Premier Line Motors" width="2048" height="768">
         </a>
         <p data-i18n="footer.tag">New, certified and electric vehicles in Paterson, New Jersey.</p>
         <div class="socials">
@@ -572,5 +579,6 @@
   </svg>
 
   <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/mascot.js"></script>
 </body>
 </html>

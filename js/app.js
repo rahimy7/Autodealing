@@ -584,9 +584,30 @@ function finishLoader() {
   if (loaderDone) return;
   loaderDone = true;
   setTimeout(() => {
-    $('#loader')?.classList.add('done');
+    const flying = flyLogoToHero();
     document.body.classList.add('is-ready');
+    if (!flying) { $('#loader')?.classList.add('done'); return; }
+    setTimeout(() => {
+      $('#loader').classList.add('done');
+      document.body.classList.remove('logo-handoff');
+    }, 950);
   }, 350);
+}
+// The loader's logo travels to the hero's while the loader clears, so the page opens on the brand
+// and the car appears behind it. Returns false when there is nowhere to land.
+function flyLogoToHero() {
+  const loader = $('#loader'), from = $('.loader-logo', loader), to = $('.hero-brand .premier-brand-logo');
+  if (reducedMotion || !loader || !from || !to || loader.classList.contains('done') || !to.getBoundingClientRect().width) return false;
+  // Stop its entrance first, so it is measured at its real size.
+  loader.classList.add('handoff');
+  document.body.classList.add('logo-handoff');
+  const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
+  // The hero copy still sits lower before its reveal; land where it ends up.
+  const lift = new DOMMatrix(getComputedStyle(to.parentElement).transform).m42 || 0;
+  requestAnimationFrame(() => {
+    from.style.transform = `translate(${b.left - a.left}px, ${b.top - lift - a.top}px) scale(${b.width / a.width})`;
+  });
+  return true;
 }
 function initLoader() {
   const g = $('.lg-ticks');
@@ -598,6 +619,11 @@ function initLoader() {
   }
   g.innerHTML = lines;
   if (state.view !== 'immersive') { $('#loader').classList.add('done'); document.body.classList.add('is-ready'); loaderDone = true; return; }
+  // The light sweep follows the logo actually shown (an uploaded one replaces the original).
+  const logo = $('.loader-logo img');
+  const sweep = () => logo.currentSrc && $('.loader-logo').style.setProperty('--logo', `url("${logo.currentSrc}")`);
+  logo?.addEventListener('load', sweep);
+  if (logo?.complete) sweep();
   // fake progress while assets stream in; real progress comes from the 3D scene
   const t0 = performance.now();
   const tick = () => {
@@ -737,6 +763,15 @@ function bindNav() {
   }, { rootMargin: '-45% 0px -50% 0px' });
   ['inventory', 'finance', 'trade', 'why', 'visit'].forEach((id) => io.observe($('#' + id)));
 
+  // The hero's big logo is the brand while most of it shows below the nav; then the nav's logo returns.
+  const heroBrand = $('.hero-brand');
+  if (heroBrand) {
+    new IntersectionObserver(([en]) => nav.classList.toggle('brand-in-hero', en.isIntersecting && en.intersectionRatio > 0.35), {
+      rootMargin: `-${nav.offsetHeight}px 0px 0px 0px`,
+      threshold: [0, 0.35, 0.7, 1],
+    }).observe(heroBrand);
+  }
+
   // hero visibility → pause 3D when off-screen
   new IntersectionObserver(([en]) => { heroVisible = en.isIntersecting; heroVisibility(); }).observe($('.hero'));
   document.addEventListener('visibilitychange', heroVisibility);
@@ -806,6 +841,29 @@ function boot() {
   // Links shared by the sales team and the virtual agents open that vehicle: /?v=<id>
   const linked = new URLSearchParams(location.search).get('v');
   if (linked && byId[linked]) openVehicle(linked);
+  bindMascot();
+}
+
+// Leo, the mascot's chat (js/mascot.js), asks the page to show a vehicle or take the visitor somewhere.
+function bindMascot() {
+  const go = (id) => $('#' + id).scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth' });
+  addEventListener('premier:action', (e) => {
+    const { kind, id, filters } = e.detail || {};
+    const v = byId[id];
+    if (kind === 'vehicle' && v) openVehicle(id);
+    else if (kind === 'testdrive') {
+      if (v && [...$('#tdVehicle').options].some((o) => o.value === id)) $('#tdVehicle').value = id;
+      go('visit');
+      setTimeout(() => $('#testDriveForm [name=name]').focus({ preventScroll: true }), 700);
+    } else if (kind === 'finance') {
+      if (v && !v.priceOnRequest) { $('#cPrice').value = v.price; calc(); }
+      go('finance');
+    } else if (kind === 'trade') go('trade');
+    else if (kind === 'inventory') {
+      if (filters) { setFilter(filters); syncFilterInputs(); }
+      go('inventory');
+    }
+  });
 }
 
 boot();

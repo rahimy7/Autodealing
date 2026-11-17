@@ -31,6 +31,30 @@ Para el teléfono del vendedor (instalable desde el navegador), con la misma cue
 - **Chats:** la bandeja de Omnicanal (ver abajo).
 - **Consultas web:** tomar una consulta, agendarla con los datos que dejó el visitante y actualizar su seguimiento.
 
+## Leo, la mascota de la página
+
+El león del concesionario flota en la esquina de la página pública (`js/mascot.js`, `css/mascot.css`, imágenes en `img/mascot/`). Sale de una moneda dorada y gira hacia el puntero. En el teléfono es más pequeño y el chat ocupa la pantalla. Al tocarlo se abre un chat en el idioma de la página.
+
+- **Respuestas rápidas** (SUVs, lo más económico, financiamiento, horario y dirección, trade-in, hablar con un asesor): las contesta la página sola, con el inventario publicado y los datos de Página web.
+- **Preguntas escritas:** las responde la IA (`server/assistant.js`). Conoce los datos del concesionario, los textos que el propietario editó en Página web y las unidades disponibles y reservadas.
+  - Recomienda solo unidades de esa lista; el sitio descarta cualquier otra.
+  - No promete aprobaciones, tasas, descuentos ni garantías, y no pide datos sensibles.
+- **Sin IA**, la página contesta sola: busca en el inventario por tipo, marca, modelo, año, presupuesto y asientos, y lo que no sabe lo pasa a un asesor. Pasa cuando:
+  - no hay clave o `MASCOT_AI=off`;
+  - una misma conexión hace más de 25 preguntas en 10 minutos;
+  - se llega al límite diario.
+- **Botones:** abren la ficha del vehículo o el inventario ya filtrado. También llevan a la calculadora con el precio de la unidad, al formulario de trade-in o al de prueba de manejo con la unidad elegida, llaman o abren el mapa.
+- **Hablar con un asesor:** pide nombre y teléfono o email y crea una consulta normal (Consultas en el panel y contacto en el CRM de Omnicanal). Lleva como nota las preguntas del visitante y la unidad de la que hablaban.
+- Nunca ofrece unidades Demo, igual que la IA de Omnicanal.
+- La conversación vive solo en la pestaña del visitante. El servidor no la guarda ni la escribe en el log.
+
+Configuración:
+
+- `AI_INTEGRATIONS_OPENAI_API_KEY`: la misma clave de OpenAI de Omnicanal. Sin ella, Leo funciona sin IA.
+- `MASCOT_AI=off` apaga la IA de Leo aunque haya clave.
+- `MASCOT_AI_MODEL`: por defecto `gpt-5-mini`, como los agentes de Omnicanal.
+- `MASCOT_AI_DAILY_LIMIT`: máximo de respuestas con IA por día (hora de Nueva York), por defecto 500. Acota el costo. Pasado el límite, Leo sigue respondiendo sin IA.
+
 ## Integración con Omnicanal
 
 El concesionario tiene su propia copia de la plataforma Omnicanal en la carpeta [`omnicanal/`](omnicanal/PREMIER.md), independiente del repositorio original: lo que cambie allá no llega aquí, y viceversa. Es parte de este mismo proyecto y del mismo despliegue. El servidor del sitio la arranca como un proceso aparte en un puerto interno y la publica en `/omnicanal/` de su dominio. Usa la misma base de datos: las tablas del sitio están en el esquema `public` y las de Omnicanal en su propio esquema, `omnicanal`. El sitio no importa su código: le habla por su API.

@@ -21,6 +21,7 @@ import {
 import { CONTENT_KEYS } from "./content.js";
 import { composeCutout } from "./cutout.js";
 import { salesRouter } from "./sales.js";
+import { assistantRouter } from "./assistant.js";
 import { crmRouter } from "./crm.js";
 import { expireReservations } from "./agenda.js";
 import { workHours, everyWorkSlot } from "./work-hours.js";
@@ -354,7 +355,8 @@ app.get("/api/site/logo", async (_, res) => {
   const { rows } = await query(
     "SELECT image,mime FROM site_assets WHERE id='logo'",
   );
-  if (!rows[0]) return res.sendFile(path.join(root, "img/premier-logo.png"));
+  // Without an uploaded logo, the original in WEBP (a tenth of the PNG's weight).
+  if (!rows[0]) return res.sendFile(path.join(root, "img/premier-logo.webp"));
   res.type(rows[0].mime).set("Cache-Control", "no-cache").send(rows[0].image);
 });
 app.post("/api/leads", leadsLimit, async (req, res) => {
@@ -393,6 +395,8 @@ app.post("/api/leads", leadsLimit, async (req, res) => {
   // The inquiry also becomes a contact in Omnicanal's CRM. The visitor never waits on it.
   void pushLead(leadId);
 });
+// Leo, the mascot on the public site, answers typed questions with the AI (server/assistant.js).
+app.use("/api/assistant", assistantRouter({ query }));
 app.use("/api/admin", auth);
 // Any change to what is for sale refreshes the inventory the virtual agents answer with.
 app.use("/api/admin", (req, res, next) => {
