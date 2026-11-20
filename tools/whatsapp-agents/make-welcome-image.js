@@ -1,5 +1,6 @@
 // Builds the welcome picture sent with the WhatsApp greeting: the real logo on the site's dark
-// background with its cyan→violet→pink accent. Output: img/welcome.jpg (1200×628, JPEG).
+// background with its cyan→violet→pink accent. Output: the panel's public
+// folder, omnicanal/artifacts/omnicanal/public/clients/premier/welcome.jpg (1200×628, JPEG).
 //   node tools/whatsapp-agents/make-welcome-image.js
 import sharp from "sharp";
 import { fileURLToPath } from "node:url";
@@ -22,7 +23,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" 
   <rect x="${W / 2 - 190}" y="496" width="380" height="5" rx="2.5" fill="url(#bar)"/>
   <text x="${W / 2}" y="560" text-anchor="middle" font-family="${font}" font-size="28" font-weight="600" letter-spacing="3" fill="#9aa3b8">Paterson, New Jersey</text>
 </svg>`;
-const out = `${P}/img/welcome.jpg`;
+const out = `${P}/omnicanal/artifacts/omnicanal/public/clients/premier/welcome.jpg`;
 await sharp(Buffer.from(svg))
   .composite([{ input: logo, left: Math.round((W - lm.width) / 2), top: 60 }])
   .jpeg({ quality: 88, mozjpeg: true })

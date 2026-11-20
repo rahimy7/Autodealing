@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { apiErrorMessage } from "@/lib/money";
 
 // Límites de WhatsApp para mensajes interactivos; el resto de canales los
 // respeta para que un mensaje se componga una vez y se vea igual en todos.
@@ -116,8 +117,8 @@ export default function CustomMessagesPage() {
       setDraft((d) => ({ ...d, imagePath: result.path }));
       queryClient.invalidateQueries({ queryKey: getListCustomMessageImagesQueryKey() });
       toast({ title: "Imagen subida" });
-    } catch {
-      toast({ title: "No se pudo subir la imagen", variant: "destructive" });
+    } catch (err) {
+      toast({ title: "No se pudo subir la imagen", description: apiErrorMessage(err, "Revisa el formato (JPEG, PNG o WebP) y que pese menos de 8 MB."), variant: "destructive" });
     } finally {
       setUploading(false);
     }

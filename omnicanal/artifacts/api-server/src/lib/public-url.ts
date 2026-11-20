@@ -21,8 +21,9 @@ export function toPublicUrl(pathOrUrl: string, env: NodeJS.ProcessEnv = process.
 }
 
 /**
- * A welcome picture is either an object in the media bucket ("custom-oferta-1a2b.jpeg") or a
- * picture the site itself serves: a path such as "/img/welcome.jpg" or a full https:// URL. The
- * second kind needs no storage account, only the public address above.
+ * A welcome picture is either an uploaded object ("custom-oferta-1a2b.jpeg") or a picture the
+ * panel itself serves from its public folder ("/clients/premier/welcome.jpg") or a full https://
+ * URL. A path is completed with the public address above, which inside the Premier site already
+ * ends in /omnicanal: that is where the panel's own files are served.
  */
-export const isSiteImage = (path: string): boolean => path.startsWith("/") || /^https?:\/\//i.test(path);
+export const isHostedImage = (path: string): boolean => path.startsWith("/") || /^https?:\/\//i.test(path);

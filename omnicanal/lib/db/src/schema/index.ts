@@ -13,6 +13,7 @@ export * from "./followups";
 export * from "./knowledge_bases";
 export * from "./products";
 export * from "./custom_messages";
+export * from "./media_objects";
 export * from "./capabilities";
 export * from "./agent_groups";
 export * from "./plan_settings";

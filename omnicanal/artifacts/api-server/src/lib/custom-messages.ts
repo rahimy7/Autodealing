@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db, customMessagesTable, conversationsTable, messagesTable } from "@workspace/db";
 import { deliverInteractiveMessage, deliverMediaMessage, deliverMessage, settleAfterAttachment, type Channel } from "./meta";
 import { signMediaUrl } from "./supabase";
-import { isSiteImage, toPublicUrl } from "./public-url";
+import { isHostedImage, toPublicUrl } from "./public-url";
 import { mediaSummary } from "./media";
 import type { Log } from "./messaging";
 
@@ -12,9 +12,9 @@ type Conversation = typeof conversationsTable.$inferSelect;
 // enough — the bucket stays private.
 const IMAGE_URL_TTL_SECONDS = 600;
 
-// What Meta can download (a bucket object is signed, a site picture gets the public address), or null when it cannot be built (no storage, or no public address).
+// What Meta can download (an uploaded object is signed, a hosted picture gets the public address), or null when it cannot be built (no storage, or no public address).
 export async function welcomeImageUrl(path: string): Promise<string | null> {
-  return isSiteImage(path) ? toPublicUrl(path) : signMediaUrl(path, IMAGE_URL_TTL_SECONDS);
+  return isHostedImage(path) ? toPublicUrl(path) : signMediaUrl(path, IMAGE_URL_TTL_SECONDS);
 }
 
 export async function getActiveWelcomeMessage(channel: string) {
@@ -47,13 +47,13 @@ export async function maybeSendWelcomeMessage(
   if (message.imagePath && !imageUrl) {
     log.error(
       { conversationId: conv.id, messageId: message.id },
-      "welcome image skipped: sin almacenamiento de imágenes ni PUBLIC_BASE_URL / RAILWAY_PUBLIC_DOMAIN para armar su enlace",
+      "welcome image skipped: no se pudo armar su enlace (falta PUBLIC_BASE_URL / RAILWAY_PUBLIC_DOMAIN o SESSION_SECRET)",
     );
   }
 
   if (message.imagePath) {
-    // The panel shows a stored object through /api/media; a site picture by its own address.
-    const site = isSiteImage(message.imagePath);
+    // The panel shows an uploaded object through /api/media; a hosted picture by its own address.
+    const site = isHostedImage(message.imagePath);
     await db.insert(messagesTable).values({
       conversationId: conv.id,
       sender: "bot",

@@ -37,7 +37,7 @@ test("WhatsApp agents: the knowledge base never states what the dealer has not p
   assert.doesNotMatch(DEALER_KB, /\$\s?\d/);
 });
 
-test("WhatsApp welcome: fits what WhatsApp accepts and its picture is served by the site", () => {
+test("WhatsApp welcome: fits what WhatsApp accepts and its picture ships with the panel", () => {
   assert.ok(WELCOME.body.length <= 1024, "interactive bodies are capped at 1024 characters");
   assert.ok(WELCOME.buttons.length >= 1 && WELCOME.buttons.length <= 3, "at most 3 buttons");
   for (const b of WELCOME.buttons) {
@@ -45,8 +45,8 @@ test("WhatsApp welcome: fits what WhatsApp accepts and its picture is served by 
     assert.match(b.id, /^[a-z0-9_-]+$/i);
   }
   assert.equal(new Set(WELCOME.buttons.map((b) => b.id)).size, WELCOME.buttons.length);
-  assert.match(WELCOME.imagePath, /^\/img\/[A-Za-z0-9._/-]+$/);
-  assert.ok(fs.existsSync(new URL(`..${WELCOME.imagePath}`, import.meta.url)), "the picture must be in img/");
+  assert.match(WELCOME.imagePath, /^\/clients\/[A-Za-z0-9._/-]+$/);
+  assert.ok(fs.existsSync(new URL(`../omnicanal/artifacts/omnicanal/public${WELCOME.imagePath}`, import.meta.url)), "the picture must be in the panel's public folder");
   assert.match(WELCOME.body, /asistente virtual/, "says it is a virtual assistant");
   assert.deepEqual(WELCOME.channels, ["whatsapp"]);
 });

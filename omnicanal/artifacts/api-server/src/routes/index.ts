@@ -19,6 +19,7 @@ import settingsRouter from "./settings";
 import logsRouter from "./logs";
 import webhooksRouter from "./webhooks";
 import mediaRouter from "./media";
+import publicMediaRouter from "./public-media";
 import feedRouter from "./feed";
 import emailRouter from "./email";
 import gmailOAuthRouter from "./gmail-oauth";
@@ -51,6 +52,7 @@ router.use(healthRouter);
 router.use(configRouter); // la marca de la instancia, que el login necesita sin sesión
 router.use(authRouter); // POST /auth/login is public; GET /auth/me guards itself
 router.use(webhooksRouter); // authenticated by Meta's X-Hub-Signature-256 instead
+router.use(publicMediaRouter); // authenticated by its signed, expiring link instead
 // La vuelta desde la pantalla de permisos de Google no trae la sesión del panel:
 // la autoriza el `state` firmado que se entregó a un administrador.
 mountModule(router, "email", gmailOAuthRouter);

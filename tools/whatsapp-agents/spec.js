@@ -108,14 +108,15 @@ export const LABELS = [
 
 // The default welcome message (Omnicanal → Mensajes personalizados). It goes out as a WhatsApp
 // interactive message: the picture on top, this text and up to three buttons. A tap comes back
-// as an ordinary message, so the agents answer it. The picture is img/welcome.jpg, served by the
-// site itself (no storage account needed); tools/whatsapp-agents/make-welcome-image.js rebuilds it.
+// as an ordinary message, so the agents answer it. The picture is the panel's own file,
+// omnicanal/artifacts/omnicanal/public/clients/premier/welcome.jpg (served at /omnicanal/clients/…,
+// the same way as the logo); tools/whatsapp-agents/make-welcome-image.js rebuilds it.
 //
 // An active welcome replaces the agent's first reply only on a bare greeting ("Hola"): when the
 // customer opens with a question, the agent answers it instead.
 export const WELCOME = {
   name: "Bienvenida · Premier Line Motors",
-  imagePath: "/img/welcome.jpg",
+  imagePath: "/clients/premier/welcome.jpg",
   channels: ["whatsapp"],
   body: `¡Hola! 👋 Bienvenido a Premier Line Motors, en Paterson, Nueva Jersey.
 

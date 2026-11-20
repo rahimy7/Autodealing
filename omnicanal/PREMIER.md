@@ -282,7 +282,7 @@ voz. La imagen se construye en x64, como en Railway.
    | `OMNICANAL_SESSION_SECRET` | `openssl rand -hex 32` (enciende Omnicanal) |
    | `PUBLIC_BASE_URL` | el dominio público del sitio, p. ej. `https://premierlinemotors.com` (sin él se usa el de Railway) |
    | `AI_INTEGRATIONS_OPENAI_API_KEY` | clave de OpenAI (sin ella la IA no contesta). Es la única obligatoria: `AI_INTEGRATIONS_OPENAI_BASE_URL` solo hace falta para usar otro proveedor o un proxy; sin ella se usa `https://api.openai.com/v1`. Cuida el nombre exacto de la variable: con una letra de menos Omnicanal no la ve |
-   | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | adjuntos: fotos, notas de voz, documentos |
+   | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | opcional: dónde se guardan los adjuntos (fotos, notas de voz, documentos, imágenes de las bienvenidas). Sin ellas se guardan en la base de datos (tabla `media_objects`) y Meta las descarga por enlaces firmados que caducan (`/api/public-media/…`): no hace falta ninguna cuenta aparte, pero necesitan `PUBLIC_BASE_URL` o el dominio de Railway |
    | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | opcional: la contraseña de la cuenta `admin` **del sitio** y su correo como nombre de usuario (`server/admin-env.js`). Omnicanal ya no las usa |
 
    `OMNICANAL_URL` no se usa en este modo: déjala vacía. `OMNICANAL_DATABASE_URL`

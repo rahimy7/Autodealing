@@ -6,7 +6,7 @@ import { z } from "zod/v4";
 import { db, customMessagesTable } from "@workspace/db";
 import { uploadMedia, listMedia, signMediaUrl, isStorageConfigured } from "../lib/supabase";
 import { MAX_INTERACTIVE_BUTTONS, MAX_BUTTON_LABEL } from "../lib/meta";
-import { isSiteImage, toPublicUrl } from "../lib/public-url";
+import { isHostedImage, toPublicUrl } from "../lib/public-url";
 
 const router: IRouter = Router();
 
@@ -34,19 +34,23 @@ const CreateBody = z.object({
   kind: z.literal("welcome").default("welcome"),
   // WhatsApp rejects interactive bodies over 1024 characters.
   body: z.string().trim().min(1).max(1024),
-  // A bucket object, or a picture the site serves itself (/img/… or an https:// link).
+  // An uploaded object, or a picture the panel serves itself (/clients/… or an https:// link).
   imagePath: z
     .string()
     .trim()
     .max(200)
-    .refine((p) => !isSiteImage(p) || /^\/img\/[A-Za-z0-9._\/-]+$/.test(p) || /^https:\/\/\S+$/.test(p), "La imagen del sitio debe estar en /img/ o ser un enlace https")
+    .refine((p) => !isHostedImage(p) || /^\/clients\/[A-Za-z0-9._\/-]+$/.test(p) || /^https:\/\/\S+$/.test(p), "La imagen debe estar en /clients/ o ser un enlace https")
     .nullable()
     .optional(),
   buttons: ButtonsSchema.default([]),
   channels: z.array(z.enum(["whatsapp", "instagram", "facebook"])).default([]),
 });
 
-const UpdateBody = CreateBody.partial().omit({ kind: true });
+// An update changes only what it names. `.partial()` alone kept the `default([])` of buttons and
+// channels, so a PATCH that sent just the image silently emptied both.
+export const UpdateBody = CreateBody.omit({ kind: true })
+  .extend({ buttons: ButtonsSchema.optional(), channels: CreateBody.shape.channels.unwrap().optional() })
+  .partial();
 const IdParams = z.object({ id: z.coerce.number().int().positive() });
 const ActivateBody = z.object({ isActive: z.boolean().default(true) });
 
@@ -55,13 +59,12 @@ const ActivateBody = z.object({ isActive: z.boolean().default(true) });
 // time-limited, and the bucket stays private.
 const PREVIEW_URL_TTL_SECONDS = 3600;
 
-// Pictures the site itself serves (no storage account needed). Offered in the composer next to
-// the uploaded ones.
-const SITE_IMAGES = [{ path: "/img/welcome.jpg", label: "Bienvenida de Premier Line Motors" }];
+// Pictures the panel itself serves from its public folder. Offered in the composer next to the
+// uploaded ones.
+const HOSTED_IMAGES = [{ path: "/clients/premier/welcome.jpg", label: "Bienvenida de Premier Line Motors" }];
 
 async function previewUrl(path: string): Promise<string | null> {
-  // The panel runs on the site's own address, so a site picture's path loads even without a public URL.
-  return isSiteImage(path) ? (toPublicUrl(path) ?? path) : signMediaUrl(path, PREVIEW_URL_TTL_SECONDS);
+  return isHostedImage(path) ? (toPublicUrl(path) ?? path) : signMediaUrl(path, PREVIEW_URL_TTL_SECONDS);
 }
 
 async function withImageUrl<T extends { imagePath: string | null }>(row: T) {
@@ -76,7 +79,7 @@ router.get("/custom-messages", async (_req, res): Promise<void> => {
 router.get("/custom-messages/images", async (_req, res): Promise<void> => {
   const objects = await listMedia(IMAGE_PREFIX);
   const site = await Promise.all(
-    SITE_IMAGES.map(async (i) => ({ path: i.path, url: (await previewUrl(i.path)) ?? i.path, size: null, updatedAt: null })),
+    HOSTED_IMAGES.map(async (i) => ({ path: i.path, url: (await previewUrl(i.path)) ?? i.path, size: null, updatedAt: null })),
   );
   res.json([
     ...site,
