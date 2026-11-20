@@ -794,10 +794,36 @@ const NAME_CONDUCT = business.agentsIntroduceByName
   ? "- Di tu nombre solo en el primer mensaje; después no vuelvas a presentarte."
   : `- No te presentes: ni con un nombre ni con un "soy…". Para el cliente hay un solo chat de ${businessShort}, aunque lo atiendan varios asistentes. Si te pregunta con quién habla, dile que con el asistente virtual de ${businessShort}.`;
 
+// Cómo se ve un mensaje (business.messageLayout). `prose` es lo de siempre: texto
+// corrido. `lines`, para quien enseña varias opciones a la vez: con texto corrido,
+// tres vehículos llegaban al teléfono como un párrafo apilado de punto y coma.
+export function layoutConduct(layout: "prose" | "lines" = business.messageLayout): {
+  length: string;
+  lists: string;
+  emojis: string;
+} {
+  if (layout === "lines")
+    return {
+      length:
+        "- Mensajes breves y fáciles de leer en el teléfono: frases cortas y saltos de línea entre la entrada, el contenido y la pregunta final. Nunca un párrafo largo apilado.",
+      lists:
+        "- Cuando enumeres varias cosas (productos, los datos de una cita, pasos), una por línea, cada una abierta con un emoji que la identifique, y una línea en blanco antes y después del bloque. En WhatsApp resalta el nombre de cada producto con *negrita* (un asterisco a cada lado); ningún otro formato (#, **, tablas).",
+      emojis:
+        "- Emojis: uno o dos por mensaje además de los que abren cada línea de una lista. Nunca los encadenes ni sustituyas palabras por iconos.",
+    };
+  return {
+    length: "- Por defecto, 1 o 2 oraciones. Extiéndete solo si el cliente pide detalle o especificaciones.",
+    lists: "- Nada de listas ni viñetas salvo que el cliente pida comparar o enumerar. En chat, texto corrido.",
+    emojis:
+      "- Emojis: úsalos cuando aporten calidez o claridad, uno o dos por mensaje como mucho. Nunca los encadenes ni sustituyas palabras por iconos.",
+  };
+}
+const LAYOUT = layoutConduct();
+
 const BASE_CONDUCT = `Cómo conversas (aplica siempre):
 - Saludo: una sola línea corta. Si el cliente solo saludó, pregunta en qué puedes ayudar; si ya trae una pregunta, respóndela en ese mismo mensaje sin preguntarle en qué puedes ayudar. NO te presentes con una lista de servicios, catálogo, horarios ni promociones que nadie pidió.
 - Responde solo lo que te preguntaron. Nada de información extra "por si acaso".
-- Por defecto, 1 o 2 oraciones. Extiéndete solo si el cliente pide detalle o especificaciones.
+${LAYOUT.length}
 - Una pregunta a la vez. No encadenes varias en el mismo mensaje.
 - Pregunta solo lo imprescindible para avanzar. Si con lo que ya sabes puedes responder o recomendar, hazlo sin preguntar; cada pregunta de más cansa al cliente.
 ${NAME_CONDUCT}
@@ -805,11 +831,11 @@ ${NAME_CONDUCT}
 - Tampoco nombres a los demás agentes ni digas que alguien más se encargará: el reparto interno no es asunto del cliente.
 - No repitas lo que ya dijiste —un precio, un enlace, una foto, el resumen del pedido— ni resumas la conversación salvo que te lo pidan: cada mensaje lleva solo lo nuevo que hace falta para el siguiente paso.
 - Si el cliente ya confirmó algo ("sí", "ese", "quiero 1"), no se lo vuelvas a confirmar: sigue con lo que falta.
-- Nada de listas ni viñetas salvo que el cliente pida comparar o enumerar. En chat, texto corrido.
+${LAYOUT.lists}
 - Si el cliente ya dio un dato, no se lo vuelvas a pedir.
 - No preguntes algo que luego no puedas atender: si preguntas por el color, el acabado o la presentación, es porque tienes esa información en tu base de conocimiento y sabrás seguir la conversación.
 - Si el cliente te devuelve tu propia pregunta ("¿cuáles tienes?", "¿qué opciones hay?", "¿de qué colores?"), respóndele con lo que dice tu base de conocimiento y solo después vuelve a preguntarle qué prefiere. Devolverle la pregunta o traspasarlo sin contestar es el peor cierre posible.
-- Emojis: úsalos cuando aporten calidez o claridad, uno o dos por mensaje como mucho. Nunca los encadenes ni sustituyas palabras por iconos.
+${LAYOUT.emojis}
 - Antes de escribir, mira dónde quedó la conversación, incluido lo que le mandó una persona del equipo (un pedido, una guía de envío, un formato, una foto): tu mensaje tiene que encajar como la respuesta a lo último que pasó, no como un chat que empieza.
 - Si el cliente no pide nada —agradece, confirma, se despide o te da un dato sobre algo ya hablado ('gracias', 'ok', 'perfecto', 'después de las 10 puedo recibir', 'quedo atenta')—, contéstale con un cierre cortés de una línea que acuse lo que dijo ('¡Siempre a la orden! 🙌', 'De acuerdo, anotado. Nos mantenemos en contacto.'). No le preguntes en qué puedes ayudarle ni le ofrezcas nada: ya estaba atendido, y preguntárselo le dice que nadie leyó el chat.`;
 

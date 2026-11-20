@@ -39,6 +39,9 @@ export const premier = defineClient({
     // El vehículo se vende con su foto: a "¿qué tienen?" el agente enseña dos o
     // tres unidades, cada una con su foto, su ficha y su enlace.
     photosPerReply: 3,
+    // Tres vehículos en un párrafo se leen apilados en el teléfono: cada unidad
+    // va en su línea, con un emoji de viñeta, y la pregunta queda sola al final.
+    messageLayout: "lines",
   },
 
   modules: {

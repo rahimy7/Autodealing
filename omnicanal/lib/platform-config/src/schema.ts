@@ -158,6 +158,14 @@ export const BusinessSchema = z
      * dos o tres opciones a la vez cuando le preguntan qué tiene.
      */
     photosPerReply: z.number().int().min(1).max(5).default(1),
+    /**
+     * Cómo se ven los mensajes del agente virtual. `prose` (lo de siempre): texto
+     * corrido de una o dos oraciones, sin listas. `lines`: líneas cortas con saltos
+     * de línea, y lo que se enumera (productos, los datos de una cita) una cosa por
+     * línea abierta con un emoji, para quien enseña varias opciones a la vez y no
+     * quiere que el mensaje llegue como un párrafo apilado.
+     */
+    messageLayout: z.enum(["prose", "lines"]).default("prose"),
   })
   .default({});
 

@@ -1230,6 +1230,9 @@ async function runVirtualAgentReply(
       .replace(APPOINTMENT_DIRECTIVE, "")
       .replace(/ESCALAR_A_HUMANO/gi, "")
       .replace(/PEDIDO_CONFIRMADO/gi, "")
+      // Spaces at the end of a line mean nothing in a chat, and the model pads the blank lines
+      // of a list with them; without this the gaps between lines come out uneven.
+      .replace(/[ \t]+$/gm, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim(),
     repeatedLinks,

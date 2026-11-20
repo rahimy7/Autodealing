@@ -46,3 +46,28 @@ describe("vehicle photos for the virtual agent", () => {
     assert.equal(SiteCatalogBody.safeParse({ source: "site-vehiculos", items: [item, item] }).success, false, "repeated slugs");
   });
 });
+
+describe("message layout", () => {
+  it("Premier writes in short lines with emoji bullets", async () => {
+    const { layoutConduct } = await import("../src/lib/openai-client.js");
+    assert.equal(clientConfig.business.messageLayout, "lines");
+    const lines = layoutConduct("lines");
+    assert.match(lines.length, /Nunca un párrafo largo apilado/);
+    assert.match(lines.lists, /una por línea, cada una abierta con un emoji/);
+    assert.doesNotMatch(lines.lists, /texto corrido/);
+  });
+
+  it("everyone else keeps running text", async () => {
+    const { layoutConduct } = await import("../src/lib/openai-client.js");
+    const prose = layoutConduct("prose");
+    assert.match(prose.lists, /Nada de listas ni viñetas/);
+    assert.match(prose.length, /1 o 2 oraciones/);
+  });
+
+  it("the agent's system prompt carries Premier's layout", async () => {
+    const { buildSystemPrompt } = await import("../src/lib/openai-client.js");
+    const prompt = buildSystemPrompt({ agentName: "Asistente", profileType: "sales", customPrompt: null });
+    assert.match(prompt, /una por línea, cada una abierta con un emoji/);
+    assert.doesNotMatch(prompt, /En chat, texto corrido/);
+  });
+});

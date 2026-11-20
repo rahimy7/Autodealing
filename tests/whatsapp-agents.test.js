@@ -56,3 +56,14 @@ test("WhatsApp agents: the sales agent sells with photos and never shows interna
   assert.match(SALES_PROMPT, /No le preguntes primero qué tipo quiere/);
   assert.match(SALES_PROMPT, /número de stock o el identificador/);
 });
+
+test("WhatsApp agents: messages are organized in lines, with emoji bullets and examples that invent nothing", () => {
+  for (const prompt of [SALES_PROMPT, SCHEDULER_PROMPT]) {
+    assert.match(prompt, /FORMATO \(WhatsApp/);
+    assert.match(prompt, /Nunca un párrafo largo apilado/);
+    assert.match(prompt, /una cosa por línea, cada línea abierta con un emoji/);
+  }
+  assert.match(SALES_PROMPT, /los vehículos de este ejemplo NO existen/);
+  assert.match(SALES_PROMPT, /🚙 \*2019 Marca Modelo Versión\*/);
+  assert.match(SCHEDULER_PROMPT, /📅 Sábado 21 de noviembre/);
+});
