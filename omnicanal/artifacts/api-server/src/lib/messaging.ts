@@ -1021,7 +1021,7 @@ async function runVirtualAgentReply(
     // rastrear un silencio del agente.
     log.error(
       { conversationId, agentId: agent.id },
-      "virtual agent skipped: faltan AI_INTEGRATIONS_OPENAI_BASE_URL / AI_INTEGRATIONS_OPENAI_API_KEY",
+      "virtual agent skipped: falta AI_INTEGRATIONS_OPENAI_API_KEY",
     );
     return;
   }

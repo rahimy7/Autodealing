@@ -3,8 +3,10 @@ import { formatDateTime as formatWhen } from "./time";
 import { MAX_BUTTON_LABEL, MAX_INTERACTIVE_BUTTONS } from "./meta";
 import { clientConfig, isModuleEnabled } from "./client-config";
 
-const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+// Only the key is required: without a base URL it talks to OpenAI directly (the same default the
+// site's own assistant uses), so a missing or misspelled address can never leave the AI off.
+const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1";
+const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY?.trim();
 
 let client: OpenAI | null = null;
 
