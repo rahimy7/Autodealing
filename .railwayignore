@@ -6,6 +6,7 @@
 node_modules
 **/node_modules
 tools
+mobile
 README.md
 omnicanal/**/dist
 omnicanal/**/*.tsbuildinfo

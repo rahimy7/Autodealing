@@ -11,6 +11,9 @@ railway.json
 node_modules
 **/node_modules
 
+# The team's phone app (mobile/) is built on its own, never inside the server image.
+mobile
+
 # Omnicanal is built inside the image (Dockerfile); its local builds and the mobile app's
 # sources stay out. The mobile manifest stays: pnpm's lockfile lists it.
 omnicanal/**/dist

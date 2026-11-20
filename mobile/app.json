@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "Premier App",
+    "slug": "premier-app",
+    "scheme": "premier",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#05060a",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.premierlinemotors.app"
+    },
+    "android": {
+      "package": "com.premierlinemotors.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-foreground.png",
+        "backgroundImage": "./assets/adaptive-background.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-logo.png",
+          "imageWidth": 240,
+          "resizeMode": "contain",
+          "backgroundColor": "#05060a"
+        }
+      ],
+      "expo-image",
+      "expo-sharing",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Premier usa la cámara para tomar las fotos de los vehículos.",
+          "photosPermission": "Premier necesita tus fotos para subir las de los vehículos.",
+          "microphonePermission": false
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      "./plugins/with-local-cleartext"
+    ],
+    "extra": {
+      "apiUrl": ""
+    }
+  }
+}
