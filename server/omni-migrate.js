@@ -6,7 +6,7 @@ import { migrateOmnicanal } from "./omni-embed.js";
 
 const cfg = omniConfig();
 if (!cfg?.embedded) {
-  console.log("Omnicanal no corre dentro de este servicio (falta OMNICANAL_DATABASE_URL): nada que actualizar.");
+  console.log("Omnicanal no corre dentro de este servicio (falta OMNICANAL_SESSION_SECRET): nada que actualizar.");
   process.exit(0);
 }
 const ok = await migrateOmnicanal(cfg, { stdio: "inherit", timeoutMs: 30 * 60_000 });

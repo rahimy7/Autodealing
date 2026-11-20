@@ -38,6 +38,7 @@ import uspsRouter from "./usps";
 import shopifyLabelsRouter from "./shopify-labels";
 import subscriptionsRouter from "./subscriptions";
 import viewAccessRouter from "./view-access";
+import navRouter from "./nav";
 import { requireAuth, viewGatedPaths, requirePlatformAdmin } from "../middlewares/auth";
 import { loadViewAccess } from "../middlewares/view-access";
 import { checkSubscription } from "../middlewares/subscription";
@@ -66,6 +67,8 @@ router.use(requireAuth);
 // quedan abiertos: los de las pantallas que no tiene se cierran por prefijo.
 router.use(loadViewAccess);
 router.use(viewGatedPaths);
+// Su menú, para quien lo incruste (la administración del sitio de Premier).
+router.use(navRouter);
 
 // `mountModule` es el gating por cliente: el módulo apagado no monta su router,
 // así que sus rutas caen en el 404 JSON de /api. Lo que se monta directo es el

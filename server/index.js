@@ -5,6 +5,7 @@ import multer from "multer";
 import sharp from "sharp";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { query, transaction, initialize, pool } from "./db.js";
 import {
@@ -17,10 +18,15 @@ import {
   verifyPassword,
   hashPassword,
   publicVehicle,
+  ROLES,
+  sells,
 } from "./domain.js";
 import { CONTENT_KEYS } from "./content.js";
 import { composeCutout } from "./cutout.js";
+import { vehiclePreview, injectPreview, PREVIEW_WIDTH, PREVIEW_HEIGHT } from "./share.js";
 import { salesRouter } from "./sales.js";
+import { intakeRouter, VEHICLE_SELECT, vehicleView, canArrangePhotos } from "./intake.js";
+import { quotesRouter, quotePage } from "./quotes.js";
 import { assistantRouter } from "./assistant.js";
 import { crmRouter } from "./crm.js";
 import { expireReservations } from "./agenda.js";
@@ -40,10 +46,14 @@ import {
   handoffPage,
   handoffCsp,
   messagePage,
+  omniEntry,
 } from "./omni-embed.js";
+import { syncAdminFromEnv, adminAlias, MIN_PASSWORD } from "./admin-env.js";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const production = process.env.NODE_ENV === "production";
 await initialize();
+// The administrator's password from the environment, when it is set (server/admin-env.js).
+await syncAdminFromEnv();
 const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
@@ -55,32 +65,11 @@ app.use(
 const hours = workHours();
 const embedded = omniEmbedded();
 if (embedded) {
-  // The site's account opens the full panel: an administrator as the instance's administrator
-  // (or as their agent, once linked), a salesperson only as the agent they are linked to.
-  app.get(`${EMBED_PREFIX}/entrar`, async (req, res) => {
-    res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
-    const user = await principal(req);
-    if (!user) return res.redirect(303, "/admin/");
-    let identity;
-    try {
-      identity = await identityFor(user, { requireAgent: user.role !== "admin" });
-    } catch (error) {
-      res.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
-      return res
-        .status(error.status || 502)
-        .type("html")
-        .send(messagePage("No se pudo abrir Omnicanal", error.message, { href: "/admin/", label: "Volver al panel" }));
-    }
-    // Without a linked agent the panel shows the person's name, not the site's system identity.
-    if (identity.agentId === null) identity = { ...identity, name: user.name };
-    const nonce = randomBytes(16).toString("base64");
-    // Twelve hours, like a sign-in on Omnicanal's own form.
-    const token = mintToken(embedded.secret, identity, 12 * 60 * 60);
-    res
-      .set("Content-Security-Policy", handoffCsp(nonce))
-      .type("html")
-      .send(handoffPage({ token, user: identity }, nonce));
-  });
+  // One administration: Omnicanal's screens are entries of the administration's own menu, and the
+  // site's account is how they open (server/omni-embed.js, omniEntry).
+  const entry = omniEntry({ principal, identityFor, mintToken, secret: embedded.secret });
+  app.get(`${EMBED_PREFIX}/entrar`, entry.entrar);
+  app.use(EMBED_PREFIX, entry.pageRedirect);
   app.use(EMBED_PREFIX, omniProxy({ port: embedded.embedded.port }));
 }
 app.use(express.json({ limit: "128kb" }));
@@ -159,6 +148,11 @@ const admin = (req, res, next) =>
     : res
         .status(403)
         .json({ error: "Solo administración puede realizar esta acción." });
+// Reservations, sales, quotes and web inquiries: administration and salespeople, not service.
+const seller = (req, res, next) =>
+  sells(req.user.role)
+    ? next()
+    : res.status(403).json({ error: "Tu perfil no gestiona reservas, ventas, cotizaciones ni consultas." });
 const userView = (u) => ({
   id: u.id,
   username: u.username,
@@ -211,7 +205,9 @@ app.get("/health", async (_, res) => {
   res.json({ ok: true });
 });
 app.post("/api/auth/login", loginLimit, async (req, res) => {
-  const username = text(req.body.username, 80).toLowerCase();
+  let username = text(req.body.username, 80).toLowerCase();
+  // With ADMIN_EMAIL and ADMIN_PASSWORD set, the e-mail is the administrator's user name too.
+  if (username && username === adminAlias()) username = "admin";
   const { rows } = await query(
     "SELECT * FROM admin_users WHERE username=$1 AND active",
     [username],
@@ -341,6 +337,24 @@ app.get("/media/vehicles/:vehicleId/:photoId/cutout.webp", async (req, res) => {
   res.set("Cache-Control", "no-store");
   res.type("image/webp").send(rows[0].cutout);
 });
+// The picture WhatsApp and Facebook show for a shared vehicle link (server/share.js): a JPEG,
+// which every crawler reads, cropped to the wide card they draw. Withdrawn with the unit.
+app.get("/media/vehicles/:vehicleId/:photoId.jpg", async (req, res) => {
+  if (!isUuid(req.params.vehicleId) || !isUuid(req.params.photoId)) return res.sendStatus(404);
+  const { rows } = await query(
+    "SELECT p.image FROM vehicle_photos p JOIN vehicles v ON v.id=p.vehicle_id WHERE p.id=$1 AND v.id=$2 AND v.status IN ('available','reserved')",
+    [req.params.photoId, req.params.vehicleId],
+  );
+  if (!rows[0]) return res.sendStatus(404);
+  const jpeg = await sharp(rows[0].image)
+    .rotate()
+    .flatten({ background: "#0d1017" })
+    .resize(PREVIEW_WIDTH, PREVIEW_HEIGHT, { fit: "cover", position: "attention" })
+    .jpeg({ quality: 80, mozjpeg: true })
+    .toBuffer();
+  res.set("Cache-Control", "no-store");
+  res.type("image/jpeg").send(jpeg);
+});
 app.get("/api/content", async (_, res) => {
   res.json(
     (await query("SELECT value FROM settings WHERE id='content'")).rows[0]
@@ -359,12 +373,16 @@ app.get("/api/site/logo", async (_, res) => {
   if (!rows[0]) return res.sendFile(path.join(root, "img/premier-logo.webp"));
   res.type(rows[0].mime).set("Cache-Control", "no-cache").send(rows[0].image);
 });
+// Finance: a request a salesperson follows up by phone. It never asks for an SSN or date of birth.
+const LEAD_KINDS = ["testdrive", "trade", "contact", "finance", "visit"];
+const LEAD_FIELDS = [
+  "date", "time", "msg", "year", "make", "model", "miles", "condition",
+  "topic", "down", "employment", "income", "credit",
+];
 app.post("/api/leads", leadsLimit, async (req, res) => {
   const b = req.body;
   if (b.website) return res.json({ ok: true });
-  const kind = ["testdrive", "trade", "contact"].includes(b.kind)
-    ? b.kind
-    : "contact";
+  const kind = LEAD_KINDS.includes(b.kind) ? b.kind : "contact";
   const name = text(b.name, 160),
     phone = text(b.phone || b.contact, 100),
     email = text(b.email, 200);
@@ -382,9 +400,7 @@ app.post("/api/leads", leadsLimit, async (req, res) => {
       throw new InputError("Ese vehículo ya no está disponible.");
   }
   const data = Object.fromEntries(
-    ["date", "time", "msg", "year", "make", "model", "miles", "condition"].map(
-      (k) => [k, text(b[k], k === "msg" ? 3000 : 100)],
-    ),
+    LEAD_FIELDS.map((k) => [k, text(b[k], k === "msg" ? 3000 : 100)]),
   );
   const leadId = randomUUID();
   await query(
@@ -427,30 +443,14 @@ app.get("/api/admin/dashboard", async (req, res) => {
     recent,
   });
 });
-function vehicleView(v, role) {
-  const result = {
-    ...v.data,
-    id: v.id,
-    stock: v.stock,
-    vin: v.vin,
-    status: v.status,
-    version: v.version,
-    createdAt: v.created_at,
-    updatedAt: v.updated_at,
-    photos: v.photos || [],
-  };
-  if (role === "admin") result.purchaseCost = Number(v.purchase_cost);
-  return result;
-}
 app.get("/api/admin/vehicles", async (req, res) => {
-  const { rows } = await query(
-    "SELECT v.*,coalesce((SELECT json_agg(json_build_object('id',p.id,'url','/api/photos/'||p.id,'cutoutUrl',CASE WHEN p.cutout IS NOT NULL THEN '/api/photos/'||p.id||'/cutout' END) ORDER BY p.position,p.created_at) FROM vehicle_photos p WHERE p.vehicle_id=v.id),'[]') photos FROM vehicles v ORDER BY created_at DESC",
-  );
+  const { rows } = await query(`${VEHICLE_SELECT} ORDER BY v.created_at DESC`);
   res.json(rows.map((v) => vehicleView(v, req.user.role)));
 });
-app.post("/api/admin/vehicles", async (req, res) => {
+// Details, price and publication are administration's. The rest of the team loads units from the
+// lot with the mobile app (server/intake.js): a draft without a price.
+app.post("/api/admin/vehicles", admin, async (req, res) => {
   const v = vehicleInput(req.body);
-  if (req.user.role !== "admin") v.purchaseCost = 0;
   const id = randomUUID();
   await transaction(async (c) => {
     await c.query(
@@ -461,7 +461,7 @@ app.post("/api/admin/vehicles", async (req, res) => {
   });
   res.status(201).json({ id });
 });
-app.put("/api/admin/vehicles/:id", checkId, async (req, res) => {
+app.put("/api/admin/vehicles/:id", checkId, admin, async (req, res) => {
   const v = vehicleInput(req.body);
   await transaction(async (c) => {
     const { rows } = await c.query(
@@ -480,7 +480,6 @@ app.put("/api/admin/vehicles/:id", checkId, async (req, res) => {
         "Otro usuario actualizó el vehículo. Recarga el inventario.",
         409,
       );
-    if (req.user.role !== "admin") v.purchaseCost = Number(old.purchase_cost);
     if (old.status === "reserved" && v.status !== "reserved") {
       const { rows: held } = await c.query(
         "SELECT r.customer_name,u.name FROM reservations r JOIN admin_users u ON u.id=r.seller_id WHERE r.vehicle_id=$1 AND r.status='active'",
@@ -543,6 +542,8 @@ app.delete(
       await c.query("SELECT id FROM vehicles WHERE id=$1 FOR UPDATE", [
         req.params.id,
       ]);
+      if (!(await canArrangePhotos(c, req.user, req.params.id)))
+        throw new InputError("Solo administración ordena o quita las fotos de una unidad publicada.", 403);
       await c.query(
         "DELETE FROM vehicle_photos WHERE id=$1 AND vehicle_id=$2",
         [req.params.photoId, req.params.id],
@@ -558,6 +559,8 @@ app.put(
   upload.single("mask"),
   async (req, res) => {
     if (!req.file) throw new InputError("Falta la máscara de la foto.");
+    if (!(await canArrangePhotos({ query }, req.user, req.params.id)))
+      throw new InputError("Solo administración quita el fondo de las fotos de una unidad publicada.", 403);
     const { rows } = await query(
       "SELECT image FROM vehicle_photos WHERE id=$1 AND vehicle_id=$2",
       [req.params.photoId, req.params.id],
@@ -580,6 +583,8 @@ app.delete(
   checkId,
   async (req, res) => {
     await transaction(async (c) => {
+      if (!(await canArrangePhotos(c, req.user, req.params.id)))
+        throw new InputError("Solo administración quita el fondo de las fotos de una unidad publicada.", 403);
       const updated = await c.query(
         "UPDATE vehicle_photos SET cutout=NULL WHERE id=$1 AND vehicle_id=$2",
         [req.params.photoId, req.params.id],
@@ -603,6 +608,8 @@ app.put("/api/admin/vehicles/:id/photos/order", checkId, async (req, res) => {
     await c.query("SELECT id FROM vehicles WHERE id=$1 FOR UPDATE", [
       req.params.id,
     ]);
+    if (!(await canArrangePhotos(c, req.user, req.params.id)))
+      throw new InputError("Solo administración ordena o quita las fotos de una unidad publicada.", 403);
     const { rows } = await c.query(
       "SELECT id FROM vehicle_photos WHERE vehicle_id=$1",
       [req.params.id],
@@ -658,7 +665,7 @@ app.post(
     res.status(201).json({ ok: true });
   },
 );
-app.get("/api/admin/sales", async (req, res) => {
+app.get("/api/admin/sales", seller, async (req, res) => {
   const { rows } = await query(
     "SELECT s.*,v.stock,v.data->>'make' make,v.data->>'model' model,v.data->>'year' AS \"year\",su.name seller_name FROM sales s JOIN vehicles v ON v.id=s.vehicle_id LEFT JOIN admin_users su ON su.id=coalesce(s.seller_id,s.created_by) ORDER BY s.created_at DESC",
   );
@@ -669,7 +676,7 @@ app.get("/api/admin/sales", async (req, res) => {
     }),
   );
 });
-app.post("/api/admin/sales", async (req, res) => {
+app.post("/api/admin/sales", seller, async (req, res) => {
   if (!isUuid(req.body.vehicleId))
     throw new InputError("Selecciona un vehículo.");
   const sale = saleInput(req.body),
@@ -710,7 +717,7 @@ app.post("/api/admin/sales", async (req, res) => {
     let sellerId = hold?.live ? hold.seller_id : req.user.id;
     if (req.user.role === "admin" && req.body.sellerId) {
       const { rows: seller } = await c.query(
-        "SELECT id FROM admin_users WHERE id=$1 AND active",
+        "SELECT id FROM admin_users WHERE id=$1 AND active AND role IN ('admin','sales')",
         [req.body.sellerId],
       );
       if (!seller.length) throw new InputError("Vendedor no encontrado o desactivado.");
@@ -771,7 +778,7 @@ app.post("/api/admin/sales/:id/cancel", checkId, admin, async (req, res) => {
   });
   res.json({ ok: true });
 });
-app.get("/api/admin/leads", async (_, res) =>
+app.get("/api/admin/leads", seller, async (_, res) =>
   res.json(
     (
       await query(
@@ -780,7 +787,7 @@ app.get("/api/admin/leads", async (_, res) =>
     ).rows,
   ),
 );
-app.put("/api/admin/leads/:id", checkId, async (req, res) => {
+app.put("/api/admin/leads/:id", checkId, seller, async (req, res) => {
   if (!["new", "contacted", "closed"].includes(req.body.status))
     throw new InputError("Estado inválido.");
   await query("UPDATE leads SET status=$1 WHERE id=$2", [
@@ -861,7 +868,7 @@ app.get("/api/admin/users", admin, async (_, res) =>
   res.json(
     (
       await query(
-        "SELECT id,username,name,role,active,created_at FROM admin_users ORDER BY created_at",
+        "SELECT id,username,name,role,active,created_at,omni_agent_id FROM admin_users ORDER BY created_at",
       )
     ).rows,
   ),
@@ -873,7 +880,7 @@ app.post("/api/admin/users", admin, async (req, res) => {
   if (
     !/^[a-z0-9_.@-]{3,80}$/.test(username) ||
     !name ||
-    !["admin", "sales"].includes(role)
+    !ROLES.includes(role)
   )
     throw new InputError("Completa usuario, nombre y rol.");
   const passwordHash = await hashPassword(req.body.password),
@@ -887,12 +894,58 @@ app.post("/api/admin/users", admin, async (req, res) => {
   });
   res.status(201).json({ id });
 });
+// The team always keeps at least one active administrator. Changes to profiles and access take
+// one lock, so two administrators demoting each other at once can't leave nobody in charge.
+async function keepAnAdmin(c, userId) {
+  await c.query("SELECT pg_advisory_xact_lock(487251895)");
+  const { rows } = await c.query(
+    "SELECT count(*)::integer n FROM admin_users WHERE role='admin' AND active AND id<>$1",
+    [userId],
+  );
+  if (!rows[0].n)
+    throw new InputError("Debe quedar al menos una persona activa con perfil de administración.", 409);
+}
+// Name and profile. A person's profile is read on every request, so a change applies at once.
+app.put("/api/admin/users/:id", checkId, admin, async (req, res) => {
+  const name = text(req.body.name, 100),
+    role = req.body.role;
+  if (!name || !ROLES.includes(role)) throw new InputError("Completa nombre y perfil.");
+  await transaction(async (c) => {
+    const { rows } = await c.query("SELECT id,role FROM admin_users WHERE id=$1 FOR UPDATE", [req.params.id]);
+    if (!rows[0]) throw new InputError("Usuario no encontrado.", 404);
+    if (rows[0].role !== role) {
+      if (req.params.id === req.user.id) throw new InputError("No puedes cambiar tu propio perfil.");
+      if (rows[0].role === "admin") await keepAnAdmin(c, req.params.id);
+    }
+    await c.query("UPDATE admin_users SET name=$2,role=$3 WHERE id=$1", [req.params.id, name, role]);
+    await audit(c, req.user, "user.updated", req.params.id);
+  });
+  res.json({ ok: true });
+});
+// A new password for someone who forgot theirs. Their open sessions end. The administrator whose
+// password comes from ADMIN_PASSWORD is changed there (server/admin-env.js), not here.
+app.post("/api/admin/users/:id/password", checkId, admin, async (req, res) => {
+  if (req.params.id === req.user.id)
+    throw new InputError("Cambia tu propia contraseña desde Mi cuenta.");
+  const passwordHash = await hashPassword(req.body.password);
+  await transaction(async (c) => {
+    const { rows } = await c.query("SELECT username,role FROM admin_users WHERE id=$1 FOR UPDATE", [req.params.id]);
+    if (!rows[0]) throw new InputError("Usuario no encontrado.", 404);
+    if (rows[0].username === "admin" && rows[0].role === "admin" && (process.env.ADMIN_PASSWORD || "").length >= MIN_PASSWORD)
+      throw new InputError("La contraseña de «admin» se toma de ADMIN_PASSWORD en las variables del servicio.", 409);
+    await c.query("UPDATE admin_users SET password_hash=$2 WHERE id=$1", [req.params.id, passwordHash]);
+    await c.query("DELETE FROM sessions WHERE user_id=$1", [req.params.id]);
+    await audit(c, req.user, "user.password.reset", req.params.id);
+  });
+  res.json({ ok: true });
+});
 app.put("/api/admin/users/:id/active", checkId, admin, async (req, res) => {
   if (req.params.id === req.user.id)
     throw new InputError("No puedes desactivar tu propia cuenta.");
   if (typeof req.body.active !== "boolean")
     throw new InputError("Estado inválido.");
   await transaction(async (c) => {
+    if (!req.body.active) await keepAnAdmin(c, req.params.id);
     await c.query("UPDATE admin_users SET active=$1 WHERE id=$2", [
       req.body.active,
       req.params.id,
@@ -903,7 +956,9 @@ app.put("/api/admin/users/:id/active", checkId, admin, async (req, res) => {
   });
   res.json({ ok: true });
 });
-app.use("/api/admin", salesRouter({ admin, audit, checkId }));
+app.use("/api/admin", salesRouter({ admin, seller, audit, checkId }));
+app.use("/api/admin", intakeRouter({ audit, checkId }));
+app.use("/api/admin", quotesRouter({ admin, seller, audit, checkId }));
 app.use("/api/admin/crm", crmRouter({ admin, audit }));
 app.use("/api", (_, res) =>
   res.status(404).json({ error: "Ruta no encontrada." }),
@@ -922,21 +977,51 @@ app.use(
   },
   express.static(path.join(root, "admin"), { index: "index.html" }),
 );
-// The salespeople's app: same session and API as the panel, built for the phone.
+// The team's mobile app (sales, service and administration): same session and API as the panel,
+// built for the phone. It loads the site's fonts, like the public page.
+const MOBILE_CSP = APP_CSP.replace("style-src 'self'", "style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com");
+app.get("/app", (_req, res) => res.redirect(302, "/ventas/"));
 app.use(
   "/ventas",
   (_req, res, next) => {
     res.set("Cache-Control", "no-store");
-    res.set("Content-Security-Policy", APP_CSP);
+    res.set("Content-Security-Policy", MOBILE_CSP);
     next();
   },
   express.static(path.join(root, "ventas"), { index: "index.html" }),
 );
 for (const folder of ["css", "js", "img"])
   app.use("/" + folder, express.static(path.join(root, folder), { maxAge: 0 }));
-app.get("/", (_, res) =>
-  res.set("Cache-Control", "no-cache").sendFile(path.join(root, "index.html")),
-);
+// A quote the customer opens from WhatsApp (server/quotes.js).
+app.get("/cotizacion/:token", quotePage);
+const indexFile = path.join(root, "index.html");
+// /?v=<id> is the link the page, the sales app and the virtual agents share for a unit: it opens
+// that vehicle, and its preview shows the unit's photo, title and price.
+async function sharedVehicle(req) {
+  const id = req.query.v;
+  if (typeof id !== "string" || !isUuid(id)) return null;
+  const [{ rows }, { rows: dealer }] = await Promise.all([
+    query(
+      "SELECT v.id,v.data,(SELECT p.id FROM vehicle_photos p WHERE p.vehicle_id=v.id ORDER BY p.position,p.created_at LIMIT 1) photo FROM vehicles v WHERE v.id=$1 AND v.status IN ('available','reserved')",
+      [id],
+    ),
+    query("SELECT value FROM settings WHERE id='dealer'"),
+  ]);
+  if (!rows[0]) return null;
+  return vehiclePreview(rows[0], dealer[0]?.value, {
+    base: `${req.protocol}://${req.get("host")}`,
+    lang: req.query.lang === "en" ? "en" : "es",
+  });
+}
+app.get("/", async (req, res) => {
+  res.set("Cache-Control", "no-cache");
+  const preview = await sharedVehicle(req).catch((e) => {
+    console.error("Vehicle preview failed:", e.code || e.name);
+    return null;
+  });
+  if (!preview) return res.sendFile(indexFile);
+  res.type("html").send(injectPreview(await readFile(indexFile, "utf8"), preview));
+});
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   if (err.code === "23505")

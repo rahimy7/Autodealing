@@ -1,11 +1,16 @@
 // Appointments and reservations: the rules shared by the sales app and the Omnicanal inbox.
 // Locks always go vehicle first, then reservation or seller, the same order the sale uses.
+// The agenda is one table the site and Omnicanal both read and write: "pending" is an appointment
+// the virtual agent booked that nobody has reviewed, "confirmed" one checked against the agenda.
 import { randomUUID } from "node:crypto";
 import { query, transaction } from "./db.js";
 import { InputError } from "./domain.js";
-import { DEALER_TZ, scheduleInventorySync, syncAppointment } from "./omni-service.js";
+import { DEALER_TZ, scheduleInventorySync, linkAppointment, dealerInfo, KIND_LABELS } from "./omni-service.js";
+import { vehicleTitle } from "./omnicanal.js";
 
-const OPEN = "('scheduled','confirmed')";
+const OPEN = "('pending','confirmed')";
+const serviceOf = (kind, vehicle, stock) =>
+  (KIND_LABELS[kind] + (vehicle ? ` · ${vehicleTitle(vehicle)} (${stock})` : "")).slice(0, 200);
 const SLOT = "tstzrange(starts_at, starts_at + make_interval(mins => duration_minutes))";
 
 export const APPOINTMENT_SELECT = `SELECT a.*,to_char(a.starts_at AT TIME ZONE '${DEALER_TZ}','YYYY-MM-DD') local_date,to_char(a.starts_at AT TIME ZONE '${DEALER_TZ}','HH24:MI') local_time,su.name seller_name,v.stock,v.data->>'year' AS "year",v.data->>'make' make,v.data->>'model' model FROM appointments a LEFT JOIN admin_users su ON su.id=a.seller_id LEFT JOIN vehicles v ON v.id=a.vehicle_id`;
@@ -56,17 +61,21 @@ async function resolveSlot(c, { date, time, startsAt }) {
   return rows[0].s;
 }
 
-// `input` comes from appointmentInput (dealer's wall clock) or, for an appointment the virtual
-// agent booked, carries `startsAt` as an instant plus its Omnicanal references.
+// `input` comes from appointmentInput (the dealer's wall clock), with the chat it came from when
+// it was made in the Omnicanal inbox.
 export async function createAppointment(user, input) {
   const id = randomUUID();
   const sellerId = user.role === "admin" ? input.sellerId || user.id : user.id;
-  const inserted = await transaction(async (c) => {
+  const dealer = await dealerInfo().catch(() => null);
+  const location = dealer ? [dealer.address, dealer.city].filter(Boolean).join(", ").slice(0, 300) || null : null;
+  await transaction(async (c) => {
+    let vehicle = null;
     if (input.vehicleId) {
-      const { rows } = await c.query("SELECT status FROM vehicles WHERE id=$1 FOR UPDATE", [input.vehicleId]);
+      const { rows } = await c.query("SELECT status,stock,data FROM vehicles WHERE id=$1 FOR UPDATE", [input.vehicleId]);
       if (!rows[0]) throw new InputError("Vehículo no encontrado.", 404);
       if (["sold", "archived"].includes(rows[0].status))
         throw new InputError("Ese vehículo ya no está a la venta.", 409);
+      vehicle = rows[0];
     }
     await lockSeller(c, sellerId);
     const startsAt = await resolveSlot(c, input);
@@ -86,10 +95,9 @@ export async function createAppointment(user, input) {
       );
       if (!lead.rowCount) throw new InputError("Consulta no encontrada.", 404);
     }
-    const { rowCount } = await c.query(
-      `INSERT INTO appointments(id,kind,starts_at,duration_minutes,seller_id,vehicle_id,lead_id,customer_name,customer_phone,customer_email,notes,status,omni_appointment_id,omni_contact_id,omni_conversation_id,created_by)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-       ON CONFLICT (omni_appointment_id) WHERE omni_appointment_id IS NOT NULL DO NOTHING`,
+    await c.query(
+      `INSERT INTO appointments(id,kind,starts_at,duration_minutes,seller_id,vehicle_id,lead_id,customer_name,customer_phone,customer_email,notes,status,service,location,source,omni_contact_id,omni_conversation_id,created_by)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'agent',$15,$16,$17)`,
       [
         id,
         input.kind,
@@ -102,19 +110,51 @@ export async function createAppointment(user, input) {
         input.customerPhone,
         input.customerEmail,
         input.notes,
-        input.status || "scheduled",
-        input.omniAppointmentId ?? null,
+        input.status || "confirmed",
+        serviceOf(input.kind, vehicle?.data, vehicle?.stock),
+        location,
         input.omniContactId ?? null,
         input.omniConversationId ?? null,
         user.id,
       ],
     );
-    if (!rowCount) throw new InputError("Esa cita ya está en la agenda.", 409);
     await c.query("INSERT INTO audit_log(user_id,action,entity_id) VALUES($1,'appointment.created',$2)", [user.id, id]);
-    return true;
   });
-  if (inserted) await syncAppointment(id);
+  await linkAppointment(id);
   return id;
+}
+
+// An appointment the virtual agent booked ("pending") becomes a salesperson's: it gets its kind,
+// vehicle and seller, is checked against their agenda like any other, and is confirmed. It is the
+// same row Omnicanal has, so there it shows as confirmed and assigned to that person's agent.
+export async function confirmAppointment(user, id, { kind, vehicleId, sellerId }) {
+  await transaction(async (c) => {
+    let vehicle = null;
+    if (vehicleId) {
+      const { rows } = await c.query("SELECT status,stock,data FROM vehicles WHERE id=$1 FOR UPDATE", [vehicleId]);
+      if (!rows[0]) throw new InputError("Vehículo no encontrado.", 404);
+      if (["sold", "archived"].includes(rows[0].status))
+        throw new InputError("Ese vehículo ya no está a la venta.", 409);
+      vehicle = rows[0];
+    }
+    const { rows } = await c.query("SELECT * FROM appointments WHERE id=$1 FOR UPDATE", [id]);
+    const a = rows[0];
+    if (!a) throw new InputError("Esa cita no existe.", 404);
+    if (a.status !== "pending") throw new InputError("Esa cita ya no está pendiente.", 409);
+    const admin = user.role === "admin";
+    if (!admin && a.seller_id && a.seller_id !== user.id) throw new InputError("Esta cita es de otro vendedor.", 403);
+    const seller = admin ? sellerId || a.seller_id || user.id : user.id;
+    await lockSeller(c, seller);
+    await checkConflicts(c, { id, sellerId: seller, vehicleId, kind, startsAt: a.starts_at, minutes: a.duration_minutes, self: seller === user.id });
+    // What the customer asked for stays in the notes.
+    const notes = [a.service, a.notes].filter(Boolean).join(" · ").slice(0, 2000);
+    await c.query(
+      "UPDATE appointments SET kind=$2,vehicle_id=$3,seller_id=$4,status='confirmed',service=$5,notes=$6,updated_at=now() WHERE id=$1",
+      [id, kind, vehicleId, seller, serviceOf(kind, vehicle?.data, vehicle?.stock), notes],
+    );
+    await c.query("INSERT INTO audit_log(user_id,action,entity_id) VALUES($1,'appointment.updated',$2)", [user.id, id]);
+  });
+  await linkAppointment(id);
 }
 
 export async function updateAppointment(user, id, patch) {
@@ -138,7 +178,7 @@ export async function updateAppointment(user, id, patch) {
     const startsAt = patch.date ? await resolveSlot(c, patch) : a.starts_at;
     const minutes = patch.durationMinutes ?? a.duration_minutes;
     const status = patch.status ?? a.status;
-    if (["scheduled", "confirmed"].includes(status))
+    if (["pending", "confirmed"].includes(status))
       await checkConflicts(c, {
         id,
         sellerId,
@@ -154,7 +194,7 @@ export async function updateAppointment(user, id, patch) {
     );
     await c.query("INSERT INTO audit_log(user_id,action,entity_id) VALUES($1,'appointment.updated',$2)", [user.id, id]);
   });
-  await syncAppointment(id);
+  await linkAppointment(id);
 }
 
 // Reservations past their date go back to the catalogue. Runs on a timer and before any read

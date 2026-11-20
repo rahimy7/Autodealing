@@ -31,7 +31,7 @@ const periodDays = (v) => {
   return Number.isInteger(n) && n >= 1 && n <= 730 ? n : 30;
 };
 
-export function salesRouter({ admin, audit, checkId }) {
+export function salesRouter({ admin, seller, audit, checkId }) {
   const r = express.Router();
 
   // Names of the team for pickers (agenda, reservations, sales). No roles or usernames needed.
@@ -44,8 +44,9 @@ export function salesRouter({ admin, audit, checkId }) {
 
   r.get("/me/summary", async (req, res) => {
     const me = req.user.id;
+    const isAdmin = req.user.role === "admin";
     await expireReservations();
-    const [sales, holds, today, leads, upcoming] = await Promise.all([
+    const [sales, holds, today, leads, upcoming, units, quotes] = await Promise.all([
       query(
         `SELECT count(*)::integer count,coalesce(sum(price),0) revenue FROM sales WHERE cancelled_at IS NULL AND coalesce(seller_id,created_by)=$1 AND sold_at>=date_trunc('month',${localToday})::date`,
         [me],
@@ -63,8 +64,20 @@ export function salesRouter({ admin, audit, checkId }) {
         [me],
       ),
       query(
-        "SELECT count(*)::integer count FROM appointments WHERE seller_id=$1 AND status IN ('scheduled','confirmed') AND starts_at>now() AND starts_at<now()+interval '7 days'",
+        "SELECT count(*)::integer count FROM appointments WHERE seller_id=$1 AND status IN ('pending','confirmed') AND starts_at>now() AND starts_at<now()+interval '7 days'",
         [me],
+      ),
+      // Units loaded from the lot: for administration, every draft waiting for its details;
+      // for the rest, their own, waiting or already published.
+      isAdmin
+        ? query("SELECT count(*)::integer drafts,count(*) FILTER (WHERE intake_by IS NOT NULL)::integer loaded,0 published FROM vehicles WHERE status='draft'")
+        : query(
+            "SELECT count(*) FILTER (WHERE status='draft')::integer drafts,count(*)::integer loaded,count(*) FILTER (WHERE status IN ('available','reserved'))::integer published FROM vehicles WHERE intake_by=$1",
+            [me],
+          ),
+      query(
+        `SELECT count(*)::integer count FROM quotes WHERE ${isAdmin ? "true" : "seller_id=$1"} AND created_at>=date_trunc('month',${localToday})::timestamp AT TIME ZONE '${TZ}'`,
+        isAdmin ? [] : [me],
       ),
     ]);
     res.json({
@@ -73,6 +86,8 @@ export function salesRouter({ admin, audit, checkId }) {
       today: today.rows,
       leads: leads.rows[0],
       upcoming: upcoming.rows[0].count,
+      units: units.rows[0],
+      quotes: quotes.rows[0],
     });
   });
 
@@ -107,7 +122,7 @@ export function salesRouter({ admin, audit, checkId }) {
   });
 
   // ── Reservations ─────────────────────────────────────────────────────────────────────────
-  r.get("/reservations", async (req, res) => {
+  r.get("/reservations", seller, async (req, res) => {
     await expireReservations();
     const status = ["active", "released", "expired", "converted", "all"].includes(req.query.status)
       ? req.query.status
@@ -124,7 +139,7 @@ export function salesRouter({ admin, audit, checkId }) {
     res.json(rows);
   });
 
-  r.post("/reservations", async (req, res) => {
+  r.post("/reservations", seller, async (req, res) => {
     if (!isUuid(req.body.vehicleId)) throw new InputError("Selecciona un vehículo.");
     const input = reservationInput(req.body);
     const sellerId = req.user.role === "admin" && input.sellerId ? input.sellerId : req.user.id;
@@ -154,7 +169,7 @@ export function salesRouter({ admin, audit, checkId }) {
       if (v.status !== "available")
         throw new InputError("Solo se pueden reservar vehículos disponibles.", 409);
       if (sellerId !== req.user.id) {
-        const seller = await c.query("SELECT id FROM admin_users WHERE id=$1 AND active", [sellerId]);
+        const seller = await c.query("SELECT id FROM admin_users WHERE id=$1 AND active AND role IN ('admin','sales')", [sellerId]);
         if (!seller.rows.length) throw new InputError("Vendedor no encontrado o desactivado.");
       }
       await c.query(
@@ -194,7 +209,7 @@ export function salesRouter({ admin, audit, checkId }) {
     });
   }
 
-  r.post("/reservations/:id/release", checkId, async (req, res) => {
+  r.post("/reservations/:id/release", checkId, seller, async (req, res) => {
     const reason = text(req.body.reason, 500);
     await withReservation(req, async (c, reservation) => {
       await c.query(
@@ -210,7 +225,7 @@ export function salesRouter({ admin, audit, checkId }) {
     res.json({ ok: true });
   });
 
-  r.post("/reservations/:id/extend", checkId, async (req, res) => {
+  r.post("/reservations/:id/extend", checkId, seller, async (req, res) => {
     const days = Number(req.body.days);
     if (!Number.isInteger(days) || days < 1 || days > RESERVATION_MAX_DAYS)
       throw new InputError("Indica cuántos días extender (1 a 30).");
@@ -236,7 +251,7 @@ export function salesRouter({ admin, audit, checkId }) {
     const where = [`a.starts_at>=${dayStart(fromSql)}`, `a.starts_at<${dayStart(`(${toSql}::date+1)`)}`];
     if (req.user.role !== "admin") where.push(`(a.seller_id=$${params.push(req.user.id)} OR a.seller_id IS NULL)`);
     else if (isUuid(req.query.seller)) where.push(`a.seller_id=$${params.push(req.query.seller)}`);
-    if (req.query.status === "open") where.push("a.status IN ('scheduled','confirmed')");
+    if (req.query.status === "open") where.push("a.status IN ('pending','confirmed')");
     const { rows } = await query(
       `${APPOINTMENT_SELECT} WHERE ${where.join(" AND ")} ORDER BY a.starts_at LIMIT 500`,
       params,
@@ -256,10 +271,10 @@ export function salesRouter({ admin, audit, checkId }) {
 
   // ── Web inquiries ────────────────────────────────────────────────────────────────────────
   // A salesperson takes an unassigned inquiry; administration can hand it to anyone.
-  r.post("/leads/:id/take", checkId, async (req, res) => {
+  r.post("/leads/:id/take", checkId, seller, async (req, res) => {
     const target = req.user.role === "admin" && isUuid(req.body.userId) ? req.body.userId : req.user.id;
     if (target !== req.user.id) {
-      const { rows } = await query("SELECT id FROM admin_users WHERE id=$1 AND active", [target]);
+      const { rows } = await query("SELECT id FROM admin_users WHERE id=$1 AND active AND role IN ('admin','sales')", [target]);
       if (!rows.length) throw new InputError("Vendedor no encontrado o desactivado.");
     }
     await transaction(async (c) => {

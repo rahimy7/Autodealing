@@ -55,6 +55,7 @@ function applyI18n() {
   document.title = t('meta.title');
   $$('[data-i18n]').forEach((el) => { const v = t(el.dataset.i18n); if (typeof v === 'string') el.textContent = v; });
   $$('[data-i18n-ph]').forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+  $$('[data-i18n-label]').forEach((el) => el.setAttribute('aria-label', t(el.dataset.i18nLabel)));
   $('#langBtn').textContent = state.lang === 'en' ? 'ES' : 'EN';
   renderMarquee();
   renderTypes();
@@ -64,6 +65,7 @@ function applyI18n() {
   fillSelects();
   updateCount();
   if (currentVehicle) fillModal(currentVehicle, true);
+  if (currentVehicle && pane === 'form') renderLeadForm(Object.fromEntries(new FormData($('#mForm'))));
 }
 
 // ============================================================ toast
@@ -102,25 +104,43 @@ function renderMarquee() {
 
 const catCount = (id) => (id === 'all' ? INVENTORY.length : INVENTORY.filter((v) => v.cats.includes(id)).length);
 
+// Only the body styles that have a vehicle for sale.
+const activeCategories = () => CATEGORIES.filter((c) => catCount(c.id) > 0);
+
+// Each tile shows a real unit of its body style: the featured one, else the newest.
 function renderTypes() {
-  $('#typeGrid').innerHTML = CATEGORIES.map((c, i) => `
-    <button type="button" class="type-card reveal" style="--d:${i * 0.06}s" data-cat="${c.id}">
+  $('#typeGrid').innerHTML = activeCategories().map((c, i) => {
+    const n = catCount(c.id);
+    const cover = INVENTORY.find((v) => v.cats.includes(c.id) && v.featured) || INVENTORY.find((v) => v.cats.includes(c.id));
+    return `
+    <button type="button" class="type-card photo reveal" style="--d:${i * 0.06}s" data-cat="${c.id}">
       <span class="arrow"><svg class="i"><use href="#i-arrow"/></svg></span>
-      <span><h3>${t('cat.' + c.id)}</h3><small>${t('types.count', { n: catCount(c.id) })}</small></span>
-      <img src="${img(c.img, 'side')}" alt="" loading="lazy" width="1200" height="720">
-    </button>`).join('');
+      <span><h3>${t('cat.' + c.id)}</h3><small>${n === 1 ? t('types.count1') : t('types.count', { n })}</small></span>
+      <img src="${img(cover.id)}" alt="" loading="lazy" width="1200" height="720">
+    </button>`;
+  }).join('');
   observeReveals($('#typeGrid'));
 }
 
+// The classic view's strip names the makes actually on the lot.
+function renderBrands() {
+  const inner = $('.brand-strip-inner');
+  if (!inner) return;
+  const makes = [...new Set(INVENTORY.map((v) => String(v.make).toUpperCase()))].sort();
+  $$('.bs-make', inner).forEach((e) => e.remove());
+  inner.append(...makes.map((m) => Object.assign(document.createElement('span'), { className: 'bs-make', textContent: m })));
+  $('.brand-strip').style.visibility = makes.length ? '' : 'hidden';
+}
+
 function renderChips() {
-  const cats = ['all', ...CATEGORIES.map((c) => c.id), ...(catCount('van') ? ['van'] : [])];
+  const cats = ['all', ...activeCategories().map((c) => c.id), ...(catCount('van') ? ['van'] : [])];
   $('#fType').innerHTML = cats.map((c) => `
     <button type="button" class="chip" data-chip="${c}" aria-pressed="${state.filters.cat === c}">${t('cat.' + c)} <small>${catCount(c)}</small></button>`).join('');
 }
 
 function fillSelects() {
   const keepType = $('#hcType').value, keepMake = $('#hcMake').value, keepTd = $('#tdVehicle').value;
-  $('#hcType').innerHTML = `<option value="all">${t('hc.any')}</option>` + CATEGORIES.map((c) => `<option value="${c.id}">${t('cat.' + c.id)}</option>`).join('');
+  $('#hcType').innerHTML = `<option value="all">${t('hc.any')}</option>` + activeCategories().map((c) => `<option value="${c.id}">${t('cat.' + c.id)}</option>`).join('');
   const makes = [...new Set(INVENTORY.map((v) => v.make))].sort();
   $('#hcMake').innerHTML = `<option value="">${t('hc.any')}</option>` + makes.map((m) => `<option>${escapeHTML(m)}</option>`).join('');
   $('#tdVehicle').innerHTML = `<option value="">${t('form.any')}</option>` + INVENTORY.map((v) => `<option value="${v.id}">${escapeHTML(title(v))}</option>`).join('');
@@ -167,7 +187,6 @@ function cardHTML(v, i) {
     <div class="cc-media" data-open="${v.id}" role="button" tabindex="0" aria-label="${t('card.view')}: ${title(v)}">
       <div class="cc-badges">${badges.join('')}</div>
       <img class="main" src="${img(v.id)}" alt="${title(v)} — ${L(v.ext)}" loading="lazy" width="1200" height="720">
-      <img class="alt" src="${img(v.id, 'rear')}" alt="" loading="lazy" width="1200" height="720" aria-hidden="true">
     </div>
     <button type="button" class="cc-fav" data-fav="${v.id}" aria-pressed="${state.favs.has(v.id)}" aria-label="${t('card.save')}: ${title(v)}"><svg class="i"><use href="#i-heart"/></svg></button>
     <div class="cc-body">
@@ -203,7 +222,6 @@ function renderInventory() {
   requestAnimationFrame(() => {
     $$('.car-card', grid).forEach((c, i) => setTimeout(() => c.classList.remove('entering'), reducedMotion ? 0 : 60 * Math.min(i, 8)));
   });
-  bindTilt();
 }
 
 function updateCount(n = filtered().length) {
@@ -273,25 +291,6 @@ function bindInventory() {
   });
 }
 
-// 3D tilt + glare on cards (immersive, fine pointer)
-function bindTilt() {
-  if (!finePointer || reducedMotion) return;
-  $$('.car-card').forEach((card) => {
-    if (card._tilt) return;
-    card._tilt = true;
-    card.addEventListener('pointermove', (e) => {
-      if (state.view !== 'immersive') return;
-      const r = card.getBoundingClientRect();
-      const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-      card.style.setProperty('--ry', `${(x - 0.5) * 10}deg`);
-      card.style.setProperty('--rx', `${(0.5 - y) * 8}deg`);
-      card.style.setProperty('--mx', `${x * 100}%`);
-      card.style.setProperty('--my', `${y * 100}%`);
-    });
-    card.addEventListener('pointerleave', () => { card.style.setProperty('--rx', '0deg'); card.style.setProperty('--ry', '0deg'); });
-  });
-}
-
 // ============================================================ modal
 let currentVehicle = null, lastFocus = null, viewer = null, viewerReady = null, modalTab = 'front', curtain = null;
 
@@ -307,20 +306,17 @@ function syncCurtain(url) {
 function fillModal(v, keepTab = false) {
   $('#mKicker').textContent = `${v.year} · ${t('cond.' + v.condition)} · #${v.stock}`;
   $('#mTitle').textContent = `${v.make} ${v.model}`;
-  $('#mTrim').textContent = `${v.trim} · ${L(v.ext)}`;
+  $('#mTrim').textContent = [v.trim, L(v.ext)].filter(Boolean).join(' · ');
   $('#mPrice').textContent = askingPrice(v);
-  $('#mPayment span').textContent = v.priceOnRequest ? askingPrice(v) : t('modal.payment');
+  $('#mPayment').hidden = v.priceOnRequest;
   $('#mMsrp').textContent = !v.priceOnRequest && v.msrp > v.price ? `${t('card.msrp')} ${usd(v.msrp)}` : '';
   $('#mMonthly').textContent = v.priceOnRequest ? '' : `${t('card.est')} ${usd(estMonthly(v.price))}${t('card.mo')}`;
   const specs = [
-    ['modal.engine', v.engine], ['modal.power', v.hp ? `${v.hp} hp` : '—'], ['modal.drive', v.drive], ['modal.trans', L(v.trans)],
-    ['modal.economy', v.economy], ['modal.zero60', `${v.zero60} s`], ['modal.miles', `${num(v.miles)} mi`], ['modal.seats', v.seats],
-    ['modal.ext', L(v.ext)], ['modal.int', L(v.int)],
-  ];
-  if (!v.zero60) specs.splice(specs.findIndex(([key]) => key === 'modal.zero60'), 1);
-  if (v.towing) specs.splice(6, 0, ['modal.tow', v.towing]);
-  specs.push(['modal.vin', v.vin]);
-  $('#mSpecs').innerHTML = specs.map(([k, val]) => `<div><dt>${t(k)}</dt><dd>${escapeHTML(val || '—')}</dd></div>`).join('');
+    ['modal.engine', v.engine], ['modal.power', v.hp && `${v.hp} hp`], ['modal.drive', v.drive], ['modal.trans', L(v.trans)],
+    ['modal.economy', v.economy], ['modal.zero60', v.zero60 && `${v.zero60} s`], ['modal.miles', v.miles && `${num(v.miles)} mi`],
+    ['modal.tow', v.towing], ['modal.seats', v.seats], ['modal.ext', L(v.ext)], ['modal.int', L(v.int)], ['modal.vin', v.vin],
+  ].filter(([, val]) => val);
+  $('#mSpecs').innerHTML = specs.map(([k, val]) => `<div><dt>${t(k)}</dt><dd>${escapeHTML(val)}</dd></div>`).join('');
   $('#mDesc').textContent = L(v.desc);
   $('#mFav').setAttribute('aria-pressed', state.favs.has(v.id));
   const tabs = v.live ? (v.photos.length ? v.photos.map((_, i) => 'photo-' + i) : ['photo-0']) : ['front', 'side', 'rear'];
@@ -328,6 +324,7 @@ function fillModal(v, keepTab = false) {
   $('#mThumbs').innerHTML = tabs.map((a) => `<button type="button" role="tab" data-tab="${a}" aria-selected="false" aria-label="${t('modal.gallery')} ${a.startsWith('photo-') ? Number(a.slice(6)) + 1 : a}"><img loading="lazy" src="${img(v.id, a.startsWith('photo-') ? Number(a.slice(6)) : a)}" alt=""></button>`).join('')
     + (v.live ? '' : `<button type="button" role="tab" class="t3d" data-tab="3d" aria-selected="false"><span>360°<small>${t('modal.3d')}</small></span></button>`);
   showTab(keepTab ? modalTab : (v.live ? 'photo-0' : 'front'));
+  prepareShare(v);
 }
 
 function showTab(tab) {
@@ -335,6 +332,7 @@ function showTab(tab) {
   modalTab = tab;
   $$('#mThumbs [data-tab]').forEach((b) => b.setAttribute('aria-selected', b.dataset.tab === tab));
   const imgEl = $('#mImg'), cv = $('#mCanvas');
+  $('#mExpand').hidden = tab === '3d';
   if (tab === '3d') {
     syncCurtain(null);
     imgEl.hidden = true; cv.hidden = false; $('#mHint').hidden = false;
@@ -351,34 +349,413 @@ function showTab(tab) {
   }
 }
 
+// The address bar carries the open vehicle (/?v=<id>), the same link the share buttons send.
+function syncUrl(v) {
+  const u = new URL(location.href);
+  if (v) u.searchParams.set('v', v.id);
+  else { u.searchParams.delete('v'); u.searchParams.delete('lang'); }
+  history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+}
+
 function openVehicle(id, trigger) {
   const v = byId[id];
   if (!v) return;
   currentVehicle = v;
   lastFocus = trigger || document.activeElement;
+  pane = 'detail';
+  closeLightbox({ sync: false });
+  showPane('detail');
   fillModal(v);
   const m = $('#vehicleModal');
   m.hidden = false;
   document.body.style.overflow = 'hidden';
   hero?.pause();
+  syncUrl(v);
   setTimeout(() => $('.modal-close', m).focus(), 50);
 }
 
 function closeModal() {
   const m = $('#vehicleModal');
   if (m.hidden) return;
+  closeLightbox({ sync: false });
   m.hidden = true;
   document.body.style.overflow = '';
   if (viewer) viewer.hide();
   curtain?.hide();
   currentVehicle = null;
+  syncUrl(null);
   heroVisibility();
   lastFocus?.focus?.({ preventScroll: true });
 }
 
+// ============================================================ full-screen photos
+// Tapping the vehicle's photo (or its expand button) opens every photo of the unit over the whole
+// screen: arrows, swipe, the keyboard and a strip of thumbnails move between them.
+const lb = { list: [], i: 0, from: null };
+const ANGLES = ['front', 'side', 'rear'];
+const galleryOf = (v) => (v.live ? (v.photos.length ? v.photos : [img(v.id, 0)]) : ANGLES.map((a) => img(v.id, a)));
+const tabAt = (v, i) => (v.live ? 'photo-' + i : ANGLES[i]);
+
+function openLightbox(trigger) {
+  const v = currentVehicle;
+  if (!v || modalTab === '3d') return;
+  lb.list = galleryOf(v);
+  const at = modalTab.startsWith('photo-') ? Number(modalTab.slice(6)) : ANGLES.indexOf(modalTab);
+  lb.i = Math.min(Math.max(at, 0), lb.list.length - 1);
+  lb.from = trigger || document.activeElement;
+  $('#lbThumbs').innerHTML = lb.list.map((src, i) => `<button type="button" tabindex="-1" data-lb="${i}" aria-label="${t('modal.gallery')} ${i + 1}"><img loading="lazy" src="${src}" alt=""></button>`).join('');
+  $('#lightbox').hidden = false;
+  paintLightbox(0);
+  $('#lbClose').focus({ preventScroll: true });
+}
+
+function paintLightbox(dir) {
+  const v = currentVehicle, n = lb.list.length, el = $('#lbImg'), src = lb.list[lb.i];
+  $('#lightbox').classList.toggle('single', n < 2);
+  $('#lbCount').textContent = `${lb.i + 1} / ${n}`;
+  $('#lbTitle').textContent = title(v);
+  $$('#lbThumbs [data-lb]').forEach((b) => b.setAttribute('aria-selected', Number(b.dataset.lb) === lb.i));
+  $('#lbThumbs [aria-selected=true]')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  el.alt = `${title(v)} — ${lb.i + 1}/${n}`;
+  if (el.getAttribute('src') !== src) {
+    $('#lbSpin').hidden = false;
+    el.style.opacity = '0';
+    el.src = src;
+  }
+  el.style.setProperty('--from', dir ? dir * 48 + 'px' : '0px');
+  el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+  if (el.complete && el.naturalWidth) lightboxLoaded();
+  // The neighbours load while this one is looked at.
+  if (n > 1) for (const j of [lb.i + 1, lb.i - 1]) new Image().src = lb.list[(j + n) % n];
+}
+
+function lightboxLoaded() {
+  $('#lbSpin').hidden = true;
+  $('#lbImg').style.opacity = '';
+}
+
+function lightboxGo(delta) {
+  const n = lb.list.length;
+  if (n < 2 || !delta) return;
+  lb.i = (lb.i + delta + n) % n;
+  paintLightbox(Math.sign(delta));
+}
+
+function closeLightbox({ sync = true } = {}) {
+  const box = $('#lightbox');
+  if (box.hidden) return;
+  box.hidden = true;
+  const v = currentVehicle;
+  // The detail view comes back on the photo that was last seen.
+  if (sync && v) {
+    const tab = tabAt(v, lb.i);
+    if (tab !== modalTab) { showTab(tab); $('#mThumbs [aria-selected=true]')?.scrollIntoView({ inline: 'nearest', block: 'nearest' }); }
+  }
+  lb.from?.focus?.({ preventScroll: true });
+}
+
+function bindLightbox() {
+  const box = $('#lightbox'), stage = $('#lbStage'), pic = $('#lbImg');
+  $('#mStage').addEventListener('click', (e) => { if (e.target === $('#mImg')) openLightbox(e.target); });
+  $('#mExpand').addEventListener('click', (e) => openLightbox(e.currentTarget));
+  $('#lbClose').addEventListener('click', () => closeLightbox());
+  $('#lbPrev').addEventListener('click', () => lightboxGo(-1));
+  $('#lbNext').addEventListener('click', () => lightboxGo(1));
+  $('#lbThumbs').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-lb]');
+    if (b) lightboxGo(Number(b.dataset.lb) - lb.i);
+  });
+  pic.addEventListener('load', lightboxLoaded);
+  pic.addEventListener('error', lightboxLoaded);
+
+  // Swipe: the photo follows the finger and a long enough drag turns to the next one.
+  let x0 = null, y0 = 0, dx = 0, dragged = false;
+  const release = () => { x0 = null; pic.style.transition = ''; pic.style.transform = ''; };
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button') || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    x0 = e.clientX; y0 = e.clientY; dx = 0; dragged = false;
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (x0 == null) return;
+    dx = e.clientX - x0;
+    if (Math.abs(dx) > 8) dragged = true;
+    if (dragged && lb.list.length > 1) { pic.style.transition = 'none'; pic.style.transform = `translateX(${dx}px)`; }
+  });
+  stage.addEventListener('pointerup', (e) => {
+    if (x0 == null) return;
+    const far = Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(e.clientY - y0) * 1.5;
+    const moved = dx;
+    release();
+    if (far) lightboxGo(moved < 0 ? 1 : -1);
+  });
+  stage.addEventListener('pointercancel', release);
+  // A tap on the dark area around the photo closes it; the end of a drag does not.
+  // The element fills the stage, so "on the photo" is worked out from the picture's own shape.
+  const onPhoto = (e) => {
+    const r = pic.getBoundingClientRect(), pad = parseFloat(getComputedStyle(pic).paddingLeft) || 0;
+    if (!pic.naturalWidth) return false;
+    const k = Math.min((r.width - 2 * pad) / pic.naturalWidth, r.height / pic.naturalHeight);
+    return Math.abs(e.clientX - (r.left + r.width / 2)) <= (pic.naturalWidth * k) / 2 && Math.abs(e.clientY - (r.top + r.height / 2)) <= (pic.naturalHeight * k) / 2;
+  };
+  stage.addEventListener('click', (e) => {
+    if (dragged) { dragged = false; return; }
+    if (!e.target.closest('button') && !onPhoto(e)) closeLightbox();
+  });
+
+  // Captured, so Escape closes only the photos and not the vehicle behind them.
+  document.addEventListener('keydown', (e) => {
+    if (box.hidden) return;
+    const keys = {
+      ArrowRight: () => lightboxGo(1), ArrowLeft: () => lightboxGo(-1),
+      Home: () => lightboxGo(-lb.i), End: () => lightboxGo(lb.list.length - 1 - lb.i),
+      Escape: () => closeLightbox(),
+    };
+    if (keys[e.key]) { e.preventDefault(); e.stopPropagation(); keys[e.key](); return; }
+    if (e.key === 'Tab') {
+      e.stopPropagation();
+      e.preventDefault();
+      const f = $$('#lbClose, #lbPrev, #lbNext', box).filter((x) => x.offsetParent !== null);
+      const at = f.indexOf(document.activeElement);
+      f[(at + (e.shiftKey ? -1 : 1) + f.length) % f.length]?.focus();
+    }
+  }, true);
+}
+
+// ============================================================ vehicle requests (financing, test drive, visit)
+// Each one becomes an inquiry in the panel, the sales app and Omnicanal's CRM (/api/leads).
+// Choices are sent in Spanish, the team's language, whatever language the visitor reads.
+const choice = (value, en = value, es = value) => ({ value, en, es });
+const LEAD_CHOICES = {
+  time: [['10:00', '10:00 AM'], ['11:30', '11:30 AM'], ['13:00', '1:00 PM'], ['14:30', '2:30 PM'], ['16:00', '4:00 PM'], ['17:30', '5:30 PM']].map(([v, label]) => choice(v, label, label)),
+  topic: [choice('Ver el vehículo', 'See the vehicle'), choice('Hablar de financiamiento', 'Talk about financing'), choice('Tasar mi vehículo (trade-in)', 'Appraise my trade-in'), choice('Otro', 'Something else')],
+  down: [choice('Sin pago inicial', 'No down payment'), choice('Menos de $1,000', 'Under $1,000'), choice('$1,000 – $3,000'), choice('$3,000 – $5,000'), choice('Más de $5,000', 'Over $5,000')],
+  employment: [choice('Empleado a tiempo completo', 'Full-time employee'), choice('Empleado a tiempo parcial', 'Part-time employee'), choice('Trabajo por cuenta propia', 'Self-employed'), choice('Jubilado', 'Retired'), choice('Otro', 'Other')],
+  income: [choice('Menos de $2,000', 'Under $2,000'), choice('$2,000 – $3,500'), choice('$3,500 – $5,000'), choice('Más de $5,000', 'Over $5,000')],
+  credit: [choice('Excelente (720+)', 'Excellent (720+)'), choice('Bueno (660–719)', 'Good (660–719)'), choice('Regular (600–659)', 'Fair (600–659)'), choice('Bajo (menos de 600)', 'Poor (under 600)'), choice('Sin historial de crédito', 'No credit history'), choice('No sé', 'Not sure')],
+};
+const LEAD_FORMS = {
+  finance: ['name', 'phone', 'email', 'down', 'employment', 'income', 'credit', 'msg'],
+  testdrive: ['name', 'phone', 'email', 'date', 'time', 'msg'],
+  visit: ['name', 'phone', 'email', 'date', 'time', 'topic', 'msg'],
+};
+let pane = 'detail', leadKind = 'finance', leadContact = {};
+const localDate = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+
+function leadField(name) {
+  const caption = (key, optional) => `<span>${t(key)}${optional ? ` <small>${t('lead.optional')}</small>` : ''}</span>`;
+  if (name === 'name') return `<label>${caption('form.name')}<input name="name" autocomplete="name" maxlength="160" required></label>`;
+  if (name === 'phone') return `<label>${caption('form.phone')}<input name="phone" type="tel" autocomplete="tel" maxlength="40" required></label>`;
+  if (name === 'email') return `<label class="span-2">${caption('form.email', true)}<input name="email" type="email" autocomplete="email" maxlength="200"></label>`;
+  if (name === 'date') return `<label>${caption('form.date')}<input name="date" type="date" min="${localDate()}" required></label>`;
+  if (name === 'msg') return `<label class="span-2">${caption('form.msg', true)}<textarea name="msg" rows="3" maxlength="3000"></textarea></label>`;
+  const required = name === 'time';
+  const options = LEAD_CHOICES[name].map((c) => `<option value="${escapeHTML(c.value)}">${escapeHTML(c[state.lang] ?? c.en)}</option>`).join('');
+  return `<label${name === 'topic' ? ' class="span-2"' : ''}>${caption(name === 'time' ? 'form.time' : 'lead.' + name, !required)}<select name="${name}"${required ? ' required' : ''}>${required ? '' : `<option value="">${t('lead.choose')}</option>`}${options}</select></label>`;
+}
+
+function renderLeadForm(values = {}) {
+  const v = currentVehicle, form = $('#mForm');
+  $('#mFormTitle').textContent = t(`lead.${leadKind}.title`);
+  $('#mFormLead').textContent = t(`lead.${leadKind}.lead`);
+  $('#mFormSubmit').textContent = t(`lead.${leadKind}.submit`);
+  $('#mFormFine').textContent = leadKind === 'finance' ? `${t('lead.finance.fine')} ${t('form.consent')}` : t('form.consent');
+  $('#mMiniImg').src = img(v.id, v.live ? 0 : 'front');
+  $('#mMiniTitle').textContent = title(v);
+  $('#mMiniPrice').textContent = askingPrice(v);
+  $('#mFormFields').innerHTML = LEAD_FORMS[leadKind].map(leadField).join('');
+  for (const [k, val] of Object.entries(values)) if (val && form.elements[k]) form.elements[k].value = val;
+}
+
+function showPane(next) {
+  // The panel keeps the tallest height it has had for this vehicle, so it never jumps when shorter.
+  const panel = $('#vehicleModal .modal-panel');
+  if (next === 'detail' && pane === 'detail') panel.style.minHeight = '';
+  else if (!$('#vehicleModal').hidden) panel.style.minHeight = Math.max(parseFloat(panel.style.minHeight) || 0, panel.offsetHeight) + 'px';
+  pane = next;
+  $('#mDetail').hidden = next !== 'detail';
+  $('#mForm').hidden = next !== 'form';
+  $('#mDone').hidden = next !== 'done';
+  $('#vehicleModal .m-grid').classList.toggle('is-request', next !== 'detail');
+  panel.scrollTop = 0;
+}
+
+function openLeadForm(kind) {
+  leadKind = LEAD_FORMS[kind] ? kind : 'finance';
+  renderLeadForm(leadContact);
+  showPane('form');
+  const first = $$('#mForm input, #mForm select').find((el) => !el.value) || $('#mForm [name=name]');
+  setTimeout(() => first.focus({ preventScroll: true }), 60);
+}
+
+function validLead(form) {
+  const f = form.elements;
+  let first = null, why = '';
+  const bad = (el, reason = '') => { el.setAttribute('aria-invalid', 'true'); if (!first) { first = el; why = reason; } };
+  $$('[aria-invalid]', form).forEach((el) => el.removeAttribute('aria-invalid'));
+  if (!f.name.value.trim()) bad(f.name);
+  if (f.phone.value.replace(/\D/g, '').length < 7) bad(f.phone);
+  if (f.email.value.trim() && !/^\S+@\S+\.\S+$/.test(f.email.value.trim())) bad(f.email);
+  if (f.date) {
+    const d = f.date.value;
+    if (!d || d < localDate()) bad(f.date);
+    else if (new Date(d + 'T12:00').getDay() === 0) bad(f.date, t('lead.sunday'));
+  }
+  if (first) { first.focus(); toast(why || t('lead.check')); }
+  return !first;
+}
+
+function leadWhen({ date, time }) {
+  if (!date) return '';
+  const day = new Date(date + 'T12:00').toLocaleDateString(state.lang === 'es' ? 'es-US' : 'en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const hour = LEAD_CHOICES.time.find((c) => c.value === time)?.en || time;
+  if (!hour) return day;
+  return `${day} ${state.lang === 'es' && hour.startsWith('1:') ? 'a la' : t('lead.at')} ${hour}`;
+}
+
+async function submitLead(e) {
+  e.preventDefault();
+  const form = e.currentTarget, v = currentVehicle;
+  if (!v || !validLead(form)) return;
+  const body = Object.fromEntries(new FormData(form));
+  body.kind = leadKind;
+  // Concept cars in the 3D showroom are not in the managed inventory: name them in the message.
+  if (v.live) body.vehicle = v.id;
+  else body.msg = [`${title(v)} (#${v.stock})`, body.msg].filter(Boolean).join('\n');
+  const btn = $('button[type=submit]', form);
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/leads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw Object.assign(new Error(data.error || ''), { shown: r.status < 500 && !!data.error });
+    leadContact = { name: body.name, phone: body.phone, email: body.email };
+    $('#toast').classList.remove('show');
+    $('#mDoneTitle').textContent = t('lead.done');
+    $('#mDoneText').textContent = t(`lead.${leadKind}.done`, { when: leadWhen(body) });
+    showPane('done');
+    $('#mDone').focus({ preventScroll: true });
+  } catch (err) {
+    toast(err.shown ? err.message : t('lead.error'));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ============================================================ sharing
+// On a phone the visitor's share sheet sends a picture of the vehicle with its title and price
+// printed on it, and the message carries them too. Elsewhere WhatsApp opens with the message and
+// the link, whose preview shows the photo and price (server/share.js).
+const coarsePointer = matchMedia('(pointer: coarse)').matches;
+const vehicleLink = (v) => `${location.origin}/?v=${encodeURIComponent(v.id)}${state.lang === 'en' ? '&lang=en' : ''}`;
+
+function shareText(v) {
+  const es = state.lang === 'es';
+  const facts = [v.miles ? `${num(v.miles)} ${es ? 'millas' : 'miles'}` : '', v.drive, L(v.ext)].filter(Boolean);
+  return [
+    `*${[title(v), v.trim].filter(Boolean).join(' ')}*`,
+    `${es ? 'Precio' : 'Price'}: ${askingPrice(v)}`,
+    facts.join(' · '),
+    `${DEALER.name} · ${DEALER.phone}`,
+    vehicleLink(v),
+  ].filter(Boolean).join('\n');
+}
+
+const loadImage = (src) => new Promise((resolve, reject) => {
+  const im = new Image();
+  im.onload = () => resolve(im);
+  im.onerror = reject;
+  im.src = src;
+});
+
+function fitText(g, text, x, y, maxWidth, size, weight, minSize = Math.round(size * 0.7)) {
+  let s = size;
+  g.font = `${weight} ${s}px Manrope, system-ui, sans-serif`;
+  while (s > minSize && g.measureText(text).width > maxWidth) { s -= 2; g.font = `${weight} ${s}px Manrope, system-ui, sans-serif`; }
+  let out = text;
+  while (out.length > 1 && g.measureText(out).width > maxWidth) out = out.slice(0, -2) + '…';
+  g.fillText(out, x, y);
+}
+
+// A square picture: the vehicle's first photo above a band with its title, price and the dealer.
+async function shareImage(v) {
+  const W = 1080, PH = 780, H = 1080, pad = 56;
+  const [photo, logo] = await Promise.all([
+    loadImage(img(v.id, v.live ? 0 : 'front')),
+    loadImage('/api/site/logo').catch(() => null),
+    document.fonts?.load('800 60px Manrope').catch(() => {}),
+  ]);
+  const c = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  const g = c.getContext('2d');
+  g.fillStyle = '#0b0d12';
+  g.fillRect(0, 0, W, H);
+  // Fills the frame when the photo's shape is close to it (a lot photo); otherwise shows it whole.
+  const shape = (photo.naturalWidth / photo.naturalHeight) / (W / PH);
+  const k = (shape > 0.85 && shape < 1.18 ? Math.max : Math.min)(W / photo.naturalWidth, PH / photo.naturalHeight);
+  const pw = photo.naturalWidth * k, ph = photo.naturalHeight * k;
+  g.drawImage(photo, (W - pw) / 2, (PH - ph) / 2, pw, ph);
+  g.fillStyle = '#38e1ff';
+  g.fillRect(0, PH, W, 6);
+  const logoW = logo ? Math.min(230, (logo.naturalWidth / logo.naturalHeight) * 86) : 0;
+  const textW = W - pad * 2 - (logoW ? logoW + 30 : 0);
+  g.textBaseline = 'alphabetic';
+  g.fillStyle = '#ffffff';
+  fitText(g, title(v), pad, PH + 86, textW, 52, 800);
+  g.fillStyle = '#9aa3b5';
+  fitText(g, [v.trim, v.miles ? `${num(v.miles)} ${state.lang === 'es' ? 'millas' : 'miles'}` : ''].filter(Boolean).join(' · '), pad, PH + 134, textW, 30, 600);
+  g.fillStyle = '#38e1ff';
+  fitText(g, askingPrice(v), pad, PH + 236, textW, 76, 800);
+  g.textAlign = 'right';
+  if (logo) g.drawImage(logo, W - pad - logoW, PH + 40, logoW, logoW * (logo.naturalHeight / logo.naturalWidth));
+  else { g.fillStyle = '#ffffff'; fitText(g, DEALER.name, W - pad, PH + 90, 300, 30, 800); }
+  g.fillStyle = '#ffffff';
+  fitText(g, DEALER.phone, W - pad, PH + 232, 300, 30, 700);
+  const blob = await new Promise((resolve) => c.toBlob(resolve, 'image/jpeg', 0.88));
+  if (!blob) throw new Error('No image');
+  const name = `${title(v)}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'vehicle';
+  return new File([blob], `${name}.jpg`, { type: 'image/jpeg' });
+}
+
+// Made as soon as the vehicle opens, so the share sheet opens right on the tap.
+let shareCache = { key: '', file: null };
+function prepareShare(v) {
+  if (!coarsePointer || !navigator.canShare) return null;
+  const key = `${v.id}:${state.lang}`;
+  if (shareCache.key !== key) shareCache = { key, file: shareImage(v).catch(() => null) };
+  return shareCache.file;
+}
+
+function shareWhatsApp() {
+  const v = currentVehicle;
+  if (!v) return;
+  const text = shareText(v);
+  const wa = 'https://wa.me/?text=' + encodeURIComponent(text);
+  const pending = prepareShare(v);
+  // Opened within the tap itself: browsers block a window opened after waiting on something.
+  if (!pending) return void window.open(wa, '_blank', 'noopener');
+  pending.then(async (file) => {
+    if (file && navigator.canShare({ files: [file], text })) {
+      try { await navigator.share({ files: [file], text }); return; }
+      catch (err) { if (err.name === 'AbortError') return; }
+    }
+    location.href = wa;
+  });
+}
+
+async function copyLink() {
+  const link = vehicleLink(currentVehicle);
+  try { await navigator.clipboard.writeText(link); toast(t('toast.copied')); }
+  catch { window.prompt(t('modal.copy'), link); }
+}
+
 function bindModal() {
   const m = $('#vehicleModal');
-  m.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) closeModal(); const tb = e.target.closest('[data-tab]'); if (tb) showTab(tb.dataset.tab); });
+  m.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) return closeModal();
+    const tb = e.target.closest('[data-tab]');
+    if (tb) return showTab(tb.dataset.tab);
+    const lead = e.target.closest('[data-lead-form]');
+    if (lead) return openLeadForm(lead.dataset.leadForm);
+    if (e.target.closest('[data-pane="detail"]')) { showPane('detail'); $('#mDetail .m-act-main').focus({ preventScroll: true }); }
+  });
   document.addEventListener('keydown', (e) => {
     if (m.hidden) return;
     if (e.key === 'Escape') closeModal();
@@ -389,16 +766,13 @@ function bindModal() {
       else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
     }
   });
+  $('#mForm').addEventListener('submit', submitLead);
+  $('#mForm').addEventListener('input', (e) => { if (e.target.getAttribute('aria-invalid') === 'true') e.target.removeAttribute('aria-invalid'); });
   $('#mFav').addEventListener('click', () => currentVehicle && toggleFav(currentVehicle.id));
-  $('#mTestDrive').addEventListener('click', () => {
-    const id = currentVehicle.id;
-    closeModal();
-    $('#tdVehicle').value = id;
-    $('#visit').scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth' });
-    setTimeout(() => $('#testDriveForm [name=name]').focus({ preventScroll: true }), 700);
-  });
+  $('#mWhatsApp').addEventListener('click', shareWhatsApp);
+  $('#mCopy').addEventListener('click', copyLink);
   $('#mPayment').addEventListener('click', () => {
-    if (currentVehicle.priceOnRequest) { toast((state.lang === 'es' ? 'Consulta el precio: ' : 'Contact us for price: ') + DEALER.phone); return; }
+    if (currentVehicle.priceOnRequest) return;
     const price = currentVehicle.price;
     closeModal();
     $('#cPrice').value = price;
@@ -788,7 +1162,7 @@ function bindCursor() {
     x = e.clientX; y = e.clientY;
     cur.classList.add('on');
     const tgt = e.target;
-    cur.classList.toggle('is-hover', !!tgt.closest('a, button, [data-open], select, label'));
+    cur.classList.toggle('is-hover', !!tgt.closest('a, button, [data-open], select, label, #mImg:not([hidden])'));
     cur.classList.toggle('is-drag', !!tgt.closest('#heroCanvas, #spinCanvas, #mCanvas'));
   }, { passive: true });
   document.addEventListener('pointerleave', () => cur.classList.remove('on'));
@@ -822,8 +1196,10 @@ function boot() {
   });
   $('#langBtn').addEventListener('click', () => { state.lang = state.lang === 'en' ? 'es' : 'en'; store.set('lang', state.lang); applyI18n(); });
 
+  renderBrands();
   bindInventory();
   bindModal();
+  bindLightbox();
   bindCalc();
   bindForms();
   bindConfigurator();

@@ -31,20 +31,38 @@ El servidor del sitio (`server/omni-embed.js`) hace cinco cosas:
    (`/omnicanal/api/…`) y los webhooks de Meta. El cuerpo de cada petición pasa
    intacto, porque la firma de Meta depende de él. La cookie de sesión del sitio
    no pasa.
-4. **Abre el panel con la cuenta del sitio** (`/omnicanal/entrar`, el botón
-   *Abrir panel de Omnicanal* en Administración → Omnicanal):
-   - Una persona de administración entra como administradora de Omnicanal.
-   - Un vendedor entra solo como el agente con el que está vinculado.
-   - La sesión dura 12 horas, igual que un ingreso por el formulario.
-   - Cerrar sesión en el sitio la cierra también en ese navegador.
-   - El formulario propio de Omnicanal sigue funcionando para quien tenga
-     usuario allí.
+4. **Una sola administración: se entra con la cuenta del sitio**
+   (`/omnicanal/entrar`, `server/omni-embed.js`, `omniEntry`):
+   - Las pantallas de Omnicanal son entradas del menú de `/admin/` (bajo
+     *Omnicanal*) y se abren dentro de su página, en un marco. El menú lo pide el
+     sitio a Omnicanal (`GET /api/nav`, las vistas que la persona tiene y los
+     módulos que la instancia enciende) y no lista *Administración* ni *Portal
+     Plataforma*. En el marco, el panel no pinta su barra lateral
+     (`artifacts/omnicanal/src/lib/embed.ts`).
+   - Cada pantalla se abre por `/omnicanal/entrar?next=/pantalla`, que deja la
+     sesión donde el panel la lee y aterriza en `next` (solo una ruta del panel,
+     nunca otra dirección). La dirección de la administración la guarda
+     (`/admin/#omnicanal/pantalla`), así que recargar o guardarla funciona.
+   - Una persona de administración entra como administradora de Omnicanal (o
+     como su agente, si está vinculada). Un vendedor entra solo como el agente
+     con el que está vinculado, en la app de ventas.
+   - La sesión dura 12 horas. Cerrar sesión en el sitio la cierra también aquí.
+   - **Sin sesión del sitio**, `/omnicanal/` lleva al inicio de sesión de la
+     administración (desde un marco, mueve la ventana entera).
+   - **Una pantalla abierta como página propia** (dirección escrita o guardada,
+     o la vuelta de Google) lleva, si quien abre es administrador, a su entrada
+     en la administración. Su API, archivos y webhooks pasan tal cual.
+   - **Omnicanal no recibe contraseñas.** El sitio le pasa `SITE_LOGIN_ONLY=1`:
+     `POST /api/auth/login` responde 403 y la pantalla de entrada del panel manda
+     a la cuenta del sitio. Así tampoco existe la cuenta de demostración que el
+     servicio habilita en desarrollo sin `ADMIN_*`. Sin esa variable (el
+     servicio por su cuenta, o para trabajar en el panel) conserva su formulario.
 5. **Le pasa su configuración.** Omnicanal lee sus propios nombres de variable.
    El sitio se los da a partir de las suyas:
 
    | Omnicanal recibe | Sale de |
    |---|---|
-   | `DATABASE_URL` | el mismo `DATABASE_URL` del sitio, u `OMNICANAL_DATABASE_URL` si se le da otra base |
+   | `DATABASE_URL` | el mismo `DATABASE_URL` del sitio (no hay otra base: la agenda es una sola tabla) |
    | `SESSION_SECRET` | `OMNICANAL_SESSION_SECRET` |
    | `PORT`, `HOST` | `OMNICANAL_PORT` (8090), `127.0.0.1` |
    | `PUBLIC_BASE_URL` | `PUBLIC_BASE_URL` del sitio más `/omnicanal`; sin ella, el dominio de Railway |
@@ -54,10 +72,12 @@ El servidor del sitio (`server/omni-embed.js`) hace cinco cosas:
 
    `DATABASE_SCHEMA` y `ADMIN_BOOTSTRAP_PASSWORD` son del sitio y no le llegan.
 
-**Comparte la base del sitio, en su propio esquema.** Las tablas del sitio están
-en `public` y las de Omnicanal en `omnicanal`. Las dos aplicaciones tienen una
-tabla `appointments`, y cada una ve la suya. La separación se sostiene en tres
-puntos:
+**Comparte la base del sitio, en su propio esquema, y una sola tabla: la agenda.**
+Las tablas del sitio están en `public` y las de Omnicanal en `omnicanal`. La
+única que no se reparte es `appointments`, la agenda: es la del sitio (esquema
+`public`) y Omnicanal la lee y la escribe tal cual, así que una cita que agenda
+la IA y una que anota un vendedor son la misma fila. El resto de la separación
+se sostiene en tres puntos:
 
 - **Consultas.** Todas las tablas y tipos se declaran con
   `pgSchema("omnicanal")` (`lib/db/src/schema/pg-schema.ts`), así que cada
@@ -68,9 +88,39 @@ puntos:
   Como drizzle-kit 0.31 no crea el esquema, `lib/db/ensure-schema.mjs` lo crea
   antes.
 - **Choque de nombres.** El sitio se niega a arrancar Omnicanal si el propio
-  sitio usa `DATABASE_SCHEMA=omnicanal`.
+  sitio usa `DATABASE_SCHEMA=omnicanal`, o cualquier esquema que no sea `public`.
 
-`OMNICANAL_DATABASE_URL` lleva Omnicanal a otra base, si algún día hace falta.
+`OMNICANAL_DATABASE_URL` ya no existe: con la agenda compartida, Omnicanal solo
+puede vivir en la base del sitio, y el sitio se niega a arrancarlo si está
+definida.
+
+**La agenda compartida.**
+
+- **Dónde se define.** El sitio crea y migra la tabla (`server/schema.sql`, así
+  existe aunque Omnicanal esté apagado). Omnicanal la declara con el `pgTable`
+  de drizzle sin esquema y con los nombres de columna del sitio
+  (`lib/db/src/schema/appointments.ts`). drizzle-kit la ignora por su
+  `schemaFilter`.
+- **Columnas de Omnicanal.** Su número de cita es `omni_appointment_id` (cada
+  fila recibe uno sola, de una secuencia), el contacto `omni_contact_id`, la
+  conversación `omni_conversation_id`, y además `agent_id`, `service`,
+  `location`, `source` y `reminder_sent_at`. Sus tiempos son `timestamptz`.
+- **Columnas del sitio.** `id` (uuid), `kind`, `seller_id`, `vehicle_id`,
+  `lead_id`, `customer_*`, `created_by`. Omnicanal no las escribe: tienen
+  valores por omisión, y un disparador (`appointments_link`) completa el
+  nombre del cliente desde su contacto y mantiene `seller_id` y `agent_id`
+  alineados vía `admin_users.omni_agent_id`.
+- **Estados.** `pending` (la IA la agendó y nadie la revisó), `confirmed`,
+  `completed`, `cancelled`, `no_show`.
+- **Una cita sin contacto.** El sitio puede guardar una cita antes de tener al
+  cliente en el CRM (si Omnicanal no respondía). Omnicanal la muestra con el
+  nombre del sitio, cuenta su hueco en los choques y no le manda recordatorio
+  hasta que tenga contacto.
+- **Migración.** Una instalación que aún tenía la tabla propia de Omnicanal la
+  recibe en el primer arranque: `server/appointments-merge.js` copia sus filas
+  a la del sitio (con su número, o uno nuevo si ya estaba tomado) y la borra
+  junto con sus tipos, antes de la actualización de drizzle-kit, para que esta
+  no tenga nada que eliminar. Es una sola transacción.
 
 **Revisiones automáticas solo en horario de trabajo.** El programador de
 Omnicanal (`src/lib/scheduler.ts`) lanza campañas programadas, cierra chats
@@ -182,7 +232,7 @@ cp .env.example .env   # completar DATABASE_URL, SESSION_SECRET, ADMIN_*, OpenAI
 ```
 
 Para que el sitio local use esa instancia, arráncalo en otro puerto con
-`OMNICANAL_URL=http://localhost:8080`, sin `OMNICANAL_DATABASE_URL` y con
+`OMNICANAL_URL=http://localhost:8080` y con
 `OMNICANAL_SESSION_SECRET` igual al `SESSION_SECRET` de ese `.env`.
 
 ## Pruebas
@@ -233,10 +283,10 @@ voz. La imagen se construye en x64, como en Railway.
    | `PUBLIC_BASE_URL` | el dominio público del sitio, p. ej. `https://premierlinemotors.com` (sin él se usa el de Railway) |
    | `AI_INTEGRATIONS_OPENAI_API_KEY` | clave de OpenAI (sin ella la IA no contesta) |
    | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | adjuntos: fotos, notas de voz, documentos |
-   | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | opcional: entrar al panel sin la cuenta del sitio |
+   | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | opcional: la contraseña de la cuenta `admin` **del sitio** y su correo como nombre de usuario (`server/admin-env.js`). Omnicanal ya no las usa |
 
-   `OMNICANAL_URL` y `OMNICANAL_DATABASE_URL` no se usan en este modo: déjalas
-   vacías.
+   `OMNICANAL_URL` no se usa en este modo: déjala vacía. `OMNICANAL_DATABASE_URL`
+   ya no existe.
 3. **Despliega** (push a `main`). En el log aparecen, en este orden:
    - `Premier server ready`;
    - la creación de las tablas de Omnicanal (`Changes applied`);
@@ -244,8 +294,7 @@ voz. La imagen se construye en x64, como en Railway.
 4. **Meta.** El webhook es `https://<dominio>/omnicanal/api/webhooks/meta`.
    - El panel lo muestra en **Configuración → Conexión con Meta**.
    - Allí mismo se cargan las credenciales (ver `META.md`).
-5. **Equipo.** Entra por Administración → Omnicanal → *Abrir panel de
-   Omnicanal*.
+5. **Equipo.** Entra a Administración y abre *Omnicanal → Agentes*.
    - En **Agentes** crea los agentes humanos y asigna la base de conocimiento
      *Inventario del concesionario (sincronizado)* al agente virtual de ventas.
    - En el sitio, vincula cada vendedor con su agente.

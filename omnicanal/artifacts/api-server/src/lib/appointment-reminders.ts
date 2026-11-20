@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { db, appointmentsTable, conversationsTable, contactsTable, messagesTable } from "@workspace/db";
 import type { Conversation } from "@workspace/db";
 import { deliverConversationMessage, type Log } from "./messaging";
@@ -102,18 +102,18 @@ export async function sweepAppointmentReminders(log: Log): Promise<void> {
       and(
         inArray(appointmentsTable.status, [...REMINDABLE_STATUSES]),
         isNull(appointmentsTable.reminderSentAt),
+        // Una cita del sitio sin contacto en el CRM todavía no tiene a quién avisar:
+        // se deja sin marcar, para que reciba su recordatorio cuando el sitio la
+        // enlace con el contacto.
+        isNotNull(appointmentsTable.contactId),
         // `startsAt` lo escribe la aplicación, así que se compara con fechas de
         // la aplicación.
         gt(appointmentsTable.startsAt, now),
         lte(appointmentsTable.startsAt, windowEnd),
-        // `createdAt` NO: lo pone Postgres con su propio reloj (defaultNow()
-        // sobre una columna sin zona guarda hora local del servidor, mientras
-        // que la aplicación escribe hora UTC). Comparar esta columna con un Date
-        // de Node mezcla dos relojes con horas de diferencia — aquí eso hacía que
-        // una cita recién reservada pasara el filtro de antigüedad y recibiera el
-        // recordatorio pegado a su confirmación. La resta se hace en SQL para que
-        // los dos lados sean del mismo reloj.
-        sql`${appointmentsTable.createdAt} <= now()::timestamp - ${sql.raw(`interval '${MIN_BOOKING_AGE_MINUTES} minutes'`)}`,
+        // `createdAt` NO: lo pone Postgres con su propio reloj. La resta se hace en
+        // SQL para que los dos lados sean del mismo reloj y una cita recién
+        // reservada no reciba el recordatorio pegado a su confirmación.
+        sql`${appointmentsTable.createdAt} <= now() - ${sql.raw(`interval '${MIN_BOOKING_AGE_MINUTES} minutes'`)}`,
       ),
     );
 

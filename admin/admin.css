@@ -219,6 +219,16 @@ textarea {
 .sidebar nav button span {
   font-size: 12px;
 }
+/* Omnicanal's screens, under its entry: more of them than the window may hold. */
+.sidebar {
+  overflow-y: auto;
+}
+.sidebar nav button.sub {
+  padding: 8px 14px 8px 42px;
+}
+.sidebar nav button.sub span {
+  font-size: 11.5px;
+}
 .sidebar nav button.active {
   background: #ffffff0e;
   color: #e8ce98;
@@ -284,6 +294,19 @@ textarea {
   padding: 36px;
   max-width: 1600px;
   margin: auto;
+}
+/* A screen of Omnicanal takes the whole area under the top bar. */
+.content.full {
+  padding: 0;
+  max-width: none;
+  margin: 0;
+}
+.omni-frame {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 76px);
+  border: 0;
+  background: #fff;
 }
 .page-heading {
   display: flex;
@@ -752,6 +775,12 @@ dialog::backdrop {
   }
   .content {
     padding: 24px 18px;
+  }
+  .content.full {
+    padding: 0;
+  }
+  .omni-frame {
+    height: calc(100vh - 66px);
   }
   .page-heading {
     flex-wrap: wrap;

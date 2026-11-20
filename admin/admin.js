@@ -64,6 +64,7 @@ const actions = {
   "lead.assigned": "Consulta asignada",
   "omnicanal.settings.updated": "Automatización de Omnicanal actualizada",
   "omnicanal.agent.linked": "Agente de Omnicanal vinculado",
+  "password.changed.env": "Contraseña de administración tomada del entorno",
 };
 let user = null,
   page = "dashboard",
@@ -112,15 +113,65 @@ function showLogin() {
   $("loginView").hidden = false;
   $("appView").hidden = true;
   $("editor").close();
+  $("content").replaceChildren();
+  document.querySelectorAll("#nav [data-omni]").forEach((n) => n.remove());
 }
+// One administration: Omnicanal's screens are entries of this menu, under "Omnicanal", and open
+// inside this page. Which ones comes from Omnicanal (what this person has and the instance has on).
+async function loadOmniMenu() {
+  document.querySelectorAll("#nav [data-omni]").forEach((n) => n.remove());
+  if (user?.role !== "admin") return;
+  let menu;
+  try {
+    menu = await api("/api/admin/crm/menu");
+  } catch {
+    return;
+  }
+  const anchor = document.querySelector('#nav [data-page="omnicanal"]');
+  if (!user || !anchor || !menu.entries?.length) return;
+  let after = anchor;
+  for (const entry of menu.entries) {
+    const b = document.createElement("button");
+    b.className = "sub";
+    b.dataset.page = "omni:" + entry.path;
+    b.dataset.omni = "";
+    b.innerHTML = `<span>${esc(entry.label)}</span>`;
+    after.after(b);
+    after = b;
+  }
+  document.querySelectorAll("#nav button").forEach((n) => n.classList.toggle("active", n.dataset.page === page));
+}
+// The page lives in the address (#omnicanal/inbox), so a reload, a saved link or an address of
+// /omnicanal that the server sends here opens the same screen.
+function syncHash() {
+  if (page.startsWith("omni:")) history.replaceState(null, "", "#omnicanal" + page.slice(5));
+  else if (location.hash.startsWith("#omnicanal")) history.replaceState(null, "", location.pathname + location.search);
+}
+function showOmnicanal(path) {
+  const frame = document.createElement("iframe");
+  frame.className = "omni-frame";
+  frame.title = "Omnicanal";
+  frame.src = "/omnicanal/entrar?next=" + encodeURIComponent(path);
+  $("content").replaceChildren(frame);
+}
+// The team's profiles (server/domain.js). Service doesn't reserve, sell or follow web inquiries.
+const ROLE_LABELS = { admin: "Administración", sales: "Ventas", service: "Servicio" };
 function showApp() {
   $("loginView").hidden = true;
   $("appView").hidden = false;
-  $("userLabel").textContent =
-    `${user.name} · ${user.role === "admin" ? "Administración" : "Ventas"}`;
+  $("userLabel").textContent = `${user.name} · ${ROLE_LABELS[user.role] || user.role}`;
   document
     .querySelectorAll("[data-admin]")
     .forEach((n) => (n.hidden = user.role !== "admin"));
+  document
+    .querySelectorAll("[data-seller]")
+    .forEach((n) => (n.hidden = user.role === "service"));
+  if (user.role === "service" && ["sales", "leads"].includes(page)) page = "dashboard";
+  const target = user.role === "admin" ? location.hash.match(/^#omnicanal(\/[^#]*)$/) : null;
+  if (target) page = "omni:" + target[1];
+  else if (page.startsWith("omni:")) page = "dashboard";
+  document.querySelectorAll("#nav button").forEach((n) => n.classList.toggle("active", n.dataset.page === page));
+  loadOmniMenu();
   renderPage();
 }
 $("loginForm").addEventListener("submit", async (e) => {
@@ -198,6 +249,10 @@ async function busy(form, fn) {
 }
 async function renderPage() {
   const ticket = ++renderTicket;
+  syncHash();
+  const inPanel = page.startsWith("omni:");
+  $("content").classList.toggle("full", inPanel);
+  if (inPanel) return showOmnicanal(page.slice(5));
   $("content").innerHTML = '<p class="muted">Cargando…</p>';
   try {
     if (["finance", "performance", "omnicanal"].includes(page)) {
@@ -256,14 +311,14 @@ function dashboard(d) {
   $("dashNew").onclick = () => newVehicle();
 }
 function vehicleRow(v) {
-  return `<tr><td><div class="vehicle-cell">${v.photos[0] ? `<img class="thumb" src="${esc(v.photos[0].url)}" alt="">` : '<span class="thumb placeholder">Sin foto</span>'}<div><strong>${esc(v.year + " " + v.make + " " + v.model)}</strong><small>${esc(v.stock)} · ${Number(v.miles).toLocaleString()} mi</small></div></div></td><td>${badge(v.status)}${v.demo ? ' <span class="status">Demo</span>' : ""}</td><td>${v.priceOnRequest ? "Consultar precio" : usd(v.price)}</td><td>${v.photos.length} fotos</td><td><div class="actions"><button class="tiny" data-edit="${v.id}">Abrir ficha</button>${!v.demo && ["available", "reserved"].includes(v.status) ? `<button class="tiny" data-sell="${v.id}">Registrar venta</button>` : ""}</div></td></tr>`;
+  return `<tr><td><div class="vehicle-cell">${v.photos[0] ? `<img class="thumb" src="${esc(v.photos[0].url)}" alt="">` : '<span class="thumb placeholder">Sin foto</span>'}<div><strong>${esc(v.year + " " + v.make + " " + v.model)}</strong><small>${esc(v.stock)} · ${Number(v.miles).toLocaleString()} mi</small></div></div></td><td>${badge(v.status)}${v.demo ? ' <span class="status">Demo</span>' : ""}</td><td>${v.priceOnRequest ? "Consultar precio" : usd(v.price)}</td><td>${v.photos.length} fotos</td><td><div class="actions"><button class="tiny" data-edit="${v.id}">Abrir ficha</button>${!v.demo && user.role !== "service" && ["available", "reserved"].includes(v.status) ? `<button class="tiny" data-sell="${v.id}">Registrar venta</button>` : ""}</div></td></tr>`;
 }
 function inventoryPage() {
   $("content").innerHTML =
     heading(
       "Inventario de vehículos.",
       "Gestiona las unidades, su publicación, fotografías y detalles.",
-      `<div class="actions"><button class="secondary" id="exportVehicles">Exportar CSV</button><button class="primary" id="newVehicle">+ Agregar vehículo</button></div>`,
+      `<div class="actions"><button class="secondary" id="exportVehicles">Exportar CSV</button>${user.role === "admin" ? '<button class="primary" id="newVehicle">+ Agregar vehículo</button>' : '<a class="primary" href="/ventas/#units/new">Cargar desde la app ↗</a>'}</div>`,
     ) +
     `<div class="toolbar"><input id="inventorySearch" type="search" placeholder="Buscar stock, VIN, marca o modelo" aria-label="Buscar vehículos"><select id="inventoryStatus" aria-label="Filtrar estado"><option value="">Todos los estados</option>${Object.entries(
       statusLabels,
@@ -296,7 +351,7 @@ function inventoryPage() {
   draw();
   $("inventorySearch").oninput = draw;
   $("inventoryStatus").onchange = draw;
-  $("newVehicle").onclick = newVehicle;
+  if ($("newVehicle")) $("newVehicle").onclick = newVehicle;
   $("exportVehicles").onclick = () =>
     csv(
       "inventario",
@@ -368,7 +423,13 @@ function vehicleEditor(tab) {
     target.innerHTML = `<div class="notice">Esta unidad tiene una venta registrada. Su ficha está bloqueada para preservar el historial. Administración puede anular la venta desde Ventas.</div><p><strong>${esc(v.year + " " + v.make + " " + v.model)}</strong><br>${esc(v.vin)}<br>${usd(v.price)}</p>`;
     return;
   }
-  target.innerHTML = `<form id="vehicleForm"><p class="help">Guarda la ficha antes de cambiar de pestaña. Disponible y reservado se publican; borrador y archivado permanecen internos.</p><div class="form-grid"><div class="form-section">Identificación</div>${field("Stock *", "stock", v.stock, "text", 'required maxlength="40"')}${field("VIN (17 caracteres)", "vin", v.vin, "text", 'maxlength="17" minlength="17"')}${select(
+  // Details, price and publication are administration's (server/index.js); the rest of the team
+  // loads units and photos from the mobile app.
+  if (user.role !== "admin") {
+    target.innerHTML = `<div class="notice">La ficha, el precio y la publicación los completa administración. Puedes agregar fotos en la pestaña Fotos, o cargar unidades nuevas desde la <a href="/ventas/#units/new">app móvil</a>.</div><p><strong>${esc(v.year + " " + v.make + " " + v.model + (v.trim ? " " + v.trim : ""))}</strong><br>Stock ${esc(v.stock)}${v.vin ? " · VIN " + esc(v.vin) : ""}<br>${v.priceOnRequest ? "Consultar precio" : usd(v.price)} · ${Number(v.miles).toLocaleString()} mi</p>${v.intakeName ? `<p class="help">Cargada por ${esc(v.intakeName)}.</p>` : ""}`;
+    return;
+  }
+  target.innerHTML = `<form id="vehicleForm">${v.intakeName ? `<div class="notice">Cargada desde la app por <strong>${esc(v.intakeName)}</strong>.${v.intakeNotes ? " Notas: " + esc(v.intakeNotes) : ""}</div>` : ""}<p class="help">Guarda la ficha antes de cambiar de pestaña. Disponible y reservado se publican; borrador y archivado permanecen internos.</p><div class="form-grid"><div class="form-section">Identificación</div>${field("Stock *", "stock", v.stock, "text", 'required maxlength="40"')}${field("VIN (17 caracteres)", "vin", v.vin, "text", 'maxlength="17" minlength="17"')}${select(
     "Estado",
     "status",
     [
@@ -441,8 +502,11 @@ function vehicleEditor(tab) {
 }
 function photosTab() {
   const v = editorVehicle;
+  // Anyone adds photos; ordering, removing and cutouts are administration's, or the loader's while
+  // the unit is their draft (server/intake.js, canArrangePhotos).
+  const arrange = user.role === "admin" || (v.status === "draft" && v.intakeBy === user.id);
   $("vehicleTab").innerHTML =
-    `<p class="help">La primera imagen es la portada. Puedes cambiar el orden con las flechas. JPG, PNG o WEBP; hasta 10 MB por archivo y 60 fotos por unidad. Las fotos se guardan en Neon y se optimizan automáticamente. Con «Quitar fondo», los clientes pueden deslizar una cortina que cambia el fondo de esa foto.</p><div class="file-upload"><label>Agregar fotografías<input id="photoFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple></label></div><p id="photoStatus" role="status"></p><div class="photo-grid">${v.photos.map((p, i) => `<article class="photo"><img src="${esc(p.url)}" alt="Foto ${i + 1}"><span>${i === 0 ? "PORTADA" : "Foto " + (i + 1)}</span><div class="actions"><button type="button" class="tiny" data-move="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Mover foto ${i + 1} antes">←</button><button type="button" class="tiny" data-move="${i}" data-dir="1" ${i === v.photos.length - 1 ? "disabled" : ""} aria-label="Mover foto ${i + 1} después">→</button><button type="button" class="tiny" data-delete-photo="${p.id}">Quitar</button></div><button type="button" class="tiny photo-cutout${p.cutoutUrl ? " has-cutout" : ""}" data-cutout="${p.id}">${p.cutoutUrl ? "✓ Ver cortina" : "Quitar fondo"}</button></article>`).join("")}</div>`;
+    `<p class="help">La primera imagen es la portada. Puedes cambiar el orden con las flechas. JPG, PNG o WEBP; hasta 10 MB por archivo y 60 fotos por unidad. Las fotos se guardan en Neon y se optimizan automáticamente. Con «Quitar fondo», los clientes pueden deslizar una cortina que cambia el fondo de esa foto.</p><div class="file-upload"><label>Agregar fotografías<input id="photoFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple></label></div><p id="photoStatus" role="status"></p><div class="photo-grid">${v.photos.map((p, i) => `<article class="photo"><img src="${esc(p.url)}" alt="Foto ${i + 1}"><span>${i === 0 ? "PORTADA" : "Foto " + (i + 1)}</span>${arrange ? `<div class="actions"><button type="button" class="tiny" data-move="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Mover foto ${i + 1} antes">←</button><button type="button" class="tiny" data-move="${i}" data-dir="1" ${i === v.photos.length - 1 ? "disabled" : ""} aria-label="Mover foto ${i + 1} después">→</button><button type="button" class="tiny" data-delete-photo="${p.id}">Quitar</button></div><button type="button" class="tiny photo-cutout${p.cutoutUrl ? " has-cutout" : ""}" data-cutout="${p.id}">${p.cutoutUrl ? "✓ Ver cortina" : "Quitar fondo"}</button>` : ""}</article>`).join("")}</div>`;
   $("photoFiles").onchange = async (e) => {
     const files = [...e.target.files];
     e.target.disabled = true;
@@ -628,18 +692,18 @@ function leadsPage() {
   $("content").innerHTML =
     heading(
       "Consultas y oportunidades.",
-      "Solicitudes de prueba de manejo, intercambio y contacto recibidas en la página.",
+      "Solicitudes de financiamiento, citas, prueba de manejo, intercambio y contacto recibidas en la página.",
       `<button class="secondary" id="exportLeads">Exportar CSV</button>`,
     ) +
     `<div class="panel"><div class="table-wrap"><table><thead><tr><th>Contacto</th><th>Solicitud</th><th>Detalles</th><th>Fecha</th><th>Seguimiento</th></tr></thead><tbody>${leads
       .map(
         (l) =>
-          `<tr><td><strong>${esc(l.name)}</strong><small>${esc(l.phone)}<br>${esc(l.email)}</small></td><td>${{ testdrive: "Prueba de manejo", trade: "Intercambio", contact: "Contacto" }[l.kind]}<br><small>${esc(l.stock || "")}${l.make ? " · " + esc(l.make + " " + l.model) : ""}</small></td><td><div class="lead-detail">${esc(
+          `<tr><td><strong>${esc(l.name)}</strong><small>${esc(l.phone)}<br>${esc(l.email)}</small></td><td>${{ testdrive: "Prueba de manejo", trade: "Intercambio", contact: "Contacto", finance: "Financiamiento", visit: "Cita" }[l.kind] || esc(l.kind)}<br><small>${esc(l.stock || "")}${l.make ? " · " + esc(l.make + " " + l.model) : ""}</small></td><td><div class="lead-detail">${esc(
             Object.entries(l.data)
               .filter(([, v]) => v)
               .map(
                 ([k, v]) =>
-                  `${{ date: "Fecha", time: "Hora", msg: "Mensaje", year: "Año", make: "Marca", model: "Modelo", miles: "Millaje", condition: "Condición" }[k] || k}: ${v}`,
+                  `${{ date: "Fecha", time: "Hora", msg: "Mensaje", year: "Año", make: "Marca", model: "Modelo", miles: "Millaje", condition: "Condición", topic: "Motivo", down: "Inicial", employment: "Empleo", income: "Ingreso mensual", credit: "Crédito" }[k] || k}: ${v}`,
               )
               .join("\n"),
           )}</div></td><td>${date(l.created_at)}<br><small>${l.assigned_name ? "Atiende " + esc(l.assigned_name) : "Sin asignar"}</small></td><td><select data-lead="${l.id}" aria-label="Estado de consulta de ${esc(l.name)}">${["new", "contacted", "closed"].map((s) => `<option value="${s}" ${l.status === s ? "selected" : ""}>${statusLabels[s]}</option>`).join("")}</select></td></tr>`,
@@ -712,10 +776,10 @@ function usersPage() {
   $("content").innerHTML =
     heading(
       "Equipo y accesos.",
-      "Administración controla datos, costos y usuarios. Ventas gestiona inventario, consultas y operaciones.",
+      "Administración controla precios, publicación, costos y usuarios. Ventas cotiza, reserva y vende; Servicio carga unidades y lleva su agenda. Desde la app móvil también puedes cambiar perfiles y restablecer contraseñas.",
       `<button class="primary" id="newUser">+ Agregar usuario</button>`,
     ) +
-    `<div class="panel"><div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Acceso</th><th>Acciones</th></tr></thead><tbody>${users.map((u) => `<tr><td><strong>${esc(u.name)}</strong></td><td>${esc(u.username)}</td><td>${u.role === "admin" ? "Administración" : "Ventas"}</td><td>${u.active ? "Activo" : "Desactivado"}</td><td>${u.id !== user.id ? `<button class="tiny" data-toggle-user="${u.id}">${u.active ? "Desactivar" : "Reactivar"}</button>` : "Tu cuenta"}</td></tr>`).join("")}</tbody></table></div></div>`;
+    `<div class="panel"><div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Acceso</th><th>Acciones</th></tr></thead><tbody>${users.map((u) => `<tr><td><strong>${esc(u.name)}</strong></td><td>${esc(u.username)}</td><td>${ROLE_LABELS[u.role] || u.role}</td><td>${u.active ? "Activo" : "Desactivado"}</td><td>${u.id !== user.id ? `<button class="tiny" data-toggle-user="${u.id}">${u.active ? "Desactivar" : "Reactivar"}</button>` : "Tu cuenta"}</td></tr>`).join("")}</tbody></table></div></div>`;
   $("newUser").onclick = () => {
     dialog(
       "Agregar usuario",
@@ -724,6 +788,7 @@ function usersPage() {
         "role",
         [
           ["sales", "Ventas"],
+          ["service", "Servicio"],
           ["admin", "Administración"],
         ],
         "sales",

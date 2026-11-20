@@ -2,7 +2,7 @@
 
 # One image, one service: the dealership site plus Omnicanal (omnicanal/), which the site starts
 # on a loopback port and publishes under /omnicanal (server/omni-embed.js). Omnicanal only runs
-# when OMNICANAL_DATABASE_URL is set; without it this is the site alone.
+# when OMNICANAL_SESSION_SECRET is set; without it this is the site alone.
 
 # ── Omnicanal: pnpm workspace ───────────────────────────────────────────────────────────────
 # Debian, not Alpine: omnicanal/pnpm-workspace.yaml strips every platform binary except

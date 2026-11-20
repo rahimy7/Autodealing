@@ -181,7 +181,8 @@ export async function upsertContact({ name, phone, email, notes }) {
   return created.id;
 }
 
-const LEAD_KIND = { testdrive: "Prueba de manejo", trade: "Intercambio", contact: "Contacto" };
+const LEAD_KIND = { testdrive: "Prueba de manejo", trade: "Intercambio", contact: "Contacto", finance: "Financiamiento", visit: "Cita" };
+const LEAD_DETAILS = [["topic", "Motivo"], ["down", "Inicial"], ["employment", "Empleo"], ["income", "Ingreso mensual"], ["credit", "Crédito"]];
 // Runs after the visitor already has their answer, so it must never throw.
 export async function pushLead(leadId) {
   try {
@@ -203,6 +204,7 @@ async function pushLeadNow(leadId) {
   const parts = [`Consulta web: ${LEAD_KIND[lead.kind] || lead.kind}`];
   if (lead.vehicle) parts.push(`Vehículo: ${vehicleTitle(lead.vehicle)} (stock ${lead.stock})`);
   if (lead.data?.date) parts.push(`Fecha pedida: ${lead.data.date} ${lead.data.time || ""}`.trim());
+  for (const [key, label] of LEAD_DETAILS) if (lead.data?.[key]) parts.push(`${label}: ${lead.data[key]}`);
   if (lead.data?.msg) parts.push(`Mensaje: ${lead.data.msg}`);
   const contactId = await upsertContact({
     name: lead.name,
@@ -220,69 +222,29 @@ export const KIND_LABELS = {
   delivery: "Entrega de vehículo",
   call: "Llamada",
   followup: "Seguimiento",
+  service: "Servicio / taller",
 };
-// A salesperson's appointment has been checked against their agenda, so it is "confirmed" in
-// Omnicanal; "pending" there means the virtual agent booked it and nobody reviewed it yet.
-const OMNI_STATUS = {
-  scheduled: "confirmed",
-  confirmed: "confirmed",
-  completed: "completed",
-  cancelled: "cancelled",
-  no_show: "no_show",
-};
-// The appointment is already saved when this runs: a failure is recorded on it, never thrown.
-export async function syncAppointment(id) {
+// The agenda is one table the site and Omnicanal both read and write (server/schema.sql), so an
+// appointment is never sent anywhere: Omnicanal already has it. What Omnicanal still needs from
+// the site is the customer as a contact in its CRM, which is what reminders and the chat are
+// attached to. The appointment is already saved when this runs: a failure is recorded on it,
+// never thrown, and the next edit tries again.
+export async function linkAppointment(id) {
   if (!client) return;
   try {
-    await syncAppointmentNow(id);
+    const { rows } = await query(
+      "SELECT customer_name,customer_phone,customer_email,omni_contact_id FROM appointments WHERE id=$1",
+      [id],
+    );
+    const a = rows[0];
+    if (!a || a.omni_contact_id) return;
+    const contactId = await upsertContact({ name: a.customer_name, phone: a.customer_phone, email: a.customer_email });
+    await query("UPDATE appointments SET omni_contact_id=$1,sync_error=NULL WHERE id=$2", [contactId, id]);
   } catch (error) {
     await query("UPDATE appointments SET sync_error=$1 WHERE id=$2", [String(error.message).slice(0, 300), id]).catch(() =>
-      console.error("Omnicanal appointment sync failed:", error.message),
+      console.error("Omnicanal contact link failed:", error.message),
     );
   }
-}
-async function syncAppointmentNow(id) {
-  const { rows } = await query(
-    "SELECT a.*,u.omni_agent_id,v.stock,v.data vehicle FROM appointments a LEFT JOIN admin_users u ON u.id=a.seller_id LEFT JOIN vehicles v ON v.id=a.vehicle_id WHERE a.id=$1",
-    [id],
-  );
-  const a = rows[0];
-  if (!a) return;
-  const identity = await systemIdentity();
-  const dealer = await dealerInfo();
-  const contactId =
-    a.omni_contact_id ||
-    (await upsertContact({ name: a.customer_name, phone: a.customer_phone, email: a.customer_email }));
-  const service = (KIND_LABELS[a.kind] + (a.vehicle ? ` · ${vehicleTitle(a.vehicle)} (${a.stock})` : "")).slice(0, 200);
-  const body = {
-    agentId: a.omni_agent_id ?? null,
-    service,
-    notes: a.notes || null,
-    location: [dealer.address, dealer.city].filter(Boolean).join(", ").slice(0, 300) || null,
-    startsAt: new Date(a.starts_at).toISOString(),
-    durationMinutes: a.duration_minutes,
-    status: OMNI_STATUS[a.status],
-  };
-  let omniId = a.omni_appointment_id;
-  if (omniId) {
-    try {
-      await client.request(identity, `/appointments/${omniId}`, { method: "PATCH", body });
-    } catch (error) {
-      if (error.status !== 404) throw error;
-      omniId = null;
-    }
-  }
-  if (!omniId && a.status !== "cancelled") {
-    const created = await client.request(identity, "/appointments", {
-      method: "POST",
-      body: { ...body, contactId, conversationId: a.omni_conversation_id ?? null },
-    });
-    omniId = created.id;
-  }
-  await query(
-    "UPDATE appointments SET omni_appointment_id=$1,omni_contact_id=$2,sync_error=NULL WHERE id=$3",
-    [omniId, contactId, id],
-  );
 }
 
 // A sale that came from a chat closes that chat's sale in Omnicanal, credited to the agent.

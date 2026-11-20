@@ -235,7 +235,7 @@ export async function omnicanal(ctx) {
     heading(
       "Omnicanal.",
       "Los vendedores atienden WhatsApp, Instagram y Facebook como agentes desde la app de ventas. Los canales, bots y automatizaciones se administran en el panel de Omnicanal.",
-      settings.panelUrl ? `<a class="primary" href="${esc(settings.panelUrl)}" target="_blank" rel="noopener">Abrir panel de Omnicanal ↗</a>` : "",
+      status.connected ? `<button class="primary" id="omniOpen">Abrir la bandeja →</button>` : "",
     ) +
     `<div class="stats">
       <article class="stat"><p>Conexión</p><strong class="${status.connected ? "ok-text" : "bad-text"}">${status.connected ? "Conectado" : "Sin conexión"}</strong><small>${esc(status.connected ? inst.product || inst.name || settings.panelUrl : status.error)}</small></article>
@@ -269,6 +269,8 @@ export async function omnicanal(ctx) {
     </div>
     <div class="notice">Las citas que agenda el equipo se registran también en Omnicanal (con su agente). Las que agenda la IA por WhatsApp aparecen en la agenda de la app de ventas para confirmarlas. Una venta que viene de una reserva hecha desde un chat se marca como venta cerrada en esa conversación.</div>`;
   $("omniRefresh").onclick = () => ctx.rerender();
+  // Omnicanal's screens are entries of this same menu, under "Omnicanal".
+  $("omniOpen")?.addEventListener("click", () => document.querySelector('#nav [data-page="omni:/inbox"]')?.click());
   $("omniSync")?.addEventListener("click", async (e) => {
     e.target.disabled = true;
     try {

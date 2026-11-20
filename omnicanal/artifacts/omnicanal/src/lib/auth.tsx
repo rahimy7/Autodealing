@@ -68,6 +68,10 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const STORAGE_KEY = "omniai_session";
 
+// Marca que el panel ya mandó a esta pestaña a la cuenta del sitio (pages/login.tsx), para que
+// una sesión que el servidor rechaza no lo repita sin fin. Se borra en cuanto hay sesión.
+export const SSO_TRIED_KEY = "omnicanal:sso-tried";
+
 function readSession(): Session | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -87,8 +91,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     currentToken = session?.token ?? null;
-    if (session) localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    else localStorage.removeItem(STORAGE_KEY);
+    if (session) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+      try {
+        sessionStorage.removeItem(SSO_TRIED_KEY);
+      } catch {
+        /* sin almacenamiento de sesión: no pasa nada */
+      }
+    } else localStorage.removeItem(STORAGE_KEY);
   }, [session]);
 
   // Drop a stale/expired token on boot so the user lands on the login page

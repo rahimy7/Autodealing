@@ -6,6 +6,7 @@ import { usePresenceHeartbeat } from "@/lib/presence";
 import { useChatNotifications } from "@/lib/notifications";
 import HandoffRibbon from "@/components/HandoffRibbon";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { EMBEDDED } from "@/lib/embed";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -18,6 +19,16 @@ export default function Layout({ children }: LayoutProps) {
   // themselves too. No-op for the environment administrator (no agent row).
   usePresenceHeartbeat();
   useChatNotifications();
+  // Dentro de la administración del sitio el menú es el de la administración: aquí
+  // solo va la pantalla.
+  if (EMBEDDED) {
+    return (
+      <div className="flex h-screen flex-col overflow-hidden bg-background">
+        <HandoffRibbon />
+        <main className="flex-1 overflow-y-auto min-h-0">{children}</main>
+      </div>
+    );
+  }
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar />

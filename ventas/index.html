@@ -4,24 +4,32 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
     <meta name="robots" content="noindex,nofollow" />
-    <meta name="theme-color" content="#101721" />
+    <meta name="theme-color" content="#05060a" />
+    <meta name="color-scheme" content="dark" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="Ventas" />
-    <title>Ventas | Premier Line Motors</title>
-    <link rel="icon" href="/api/site/logo" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Premier" />
+    <title>Premier App | Premier Line Motors</title>
+    <link rel="icon" href="/ventas/icon-192.png" />
+    <link rel="apple-touch-icon" href="/ventas/apple-touch-icon.png" />
     <link rel="manifest" href="/ventas/manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;600;700&display=swap" />
     <link rel="stylesheet" href="/ventas/ventas.css" />
     <script type="module" src="/ventas/ventas.js"></script>
   </head>
   <body>
     <div id="loginView" class="login" hidden>
       <form id="loginForm" class="login-card">
-        <img src="/api/site/logo" alt="Premier Line Motors" />
-        <p class="eyebrow">APP DE VENTAS</p>
-        <h1>Catálogo, agenda y clientes en tu mano.</h1>
-        <label>Usuario<input name="username" autocomplete="username" required maxlength="80" /></label>
+        <img class="login-logo" src="/api/site/logo" alt="Premier Line Motors" />
+        <p class="eyebrow">Premier App · Equipo</p>
+        <h1>El concesionario <span class="grad">en tu mano.</span></h1>
+        <div class="roles"><span class="pill info">Ventas</span><span class="pill violet">Servicio</span><span class="pill">Administración</span></div>
+        <label>Usuario<input name="username" autocomplete="username" autocapitalize="none" required maxlength="80" /></label>
         <label>Contraseña<input name="password" type="password" autocomplete="current-password" required maxlength="128" /></label>
-        <button class="primary block" type="submit">Entrar →</button>
+        <button class="primary block" type="submit">Entrar</button>
         <p id="loginError" class="error" role="alert"></p>
       </form>
     </div>
@@ -31,17 +39,23 @@
         <img class="rail-logo" src="/api/site/logo" alt="Premier Line Motors" />
         <nav id="nav"></nav>
         <div class="rail-foot">
+          <span id="railRole" class="muted"></span>
           <a href="/admin/" id="adminLink">Panel de administración ↗</a>
+          <a href="/" target="_blank" rel="noopener">Página pública ↗</a>
         </div>
       </aside>
       <header class="bar">
-        <div>
-          <p class="eyebrow" id="barEyebrow">PREMIER LINE MOTORS</p>
-          <h1 id="pageTitle">Hoy</h1>
+        <div class="bar-brand">
+          <img class="bar-logo" src="/api/site/logo" alt="" />
+          <div>
+            <p class="eyebrow" id="barEyebrow">Premier Line Motors</p>
+            <h1 id="pageTitle">Hoy</h1>
+          </div>
         </div>
         <button id="meButton" class="me" type="button" aria-label="Mi cuenta"></button>
       </header>
       <main id="content" class="content" aria-live="polite"></main>
+      <button id="fab" class="fab" type="button" aria-label="Crear"></button>
       <nav id="tabs" class="tabs" aria-label="Secciones"></nav>
     </div>
 

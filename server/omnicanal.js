@@ -30,31 +30,33 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 export const EMBED_PREFIX = "/omnicanal";
 const DEFAULT_EMBED_PORT = 8090;
 
-// Omnicanal keeps every table and type in this Postgres schema (omnicanal/lib/db/src/schema/
-// pg-schema.ts), so it can share this site's database: the site's tables live in "public" (or
-// DATABASE_SCHEMA), and both have an `appointments` table.
+// Omnicanal keeps its tables and types in this Postgres schema (omnicanal/lib/db/src/schema/
+// pg-schema.ts), so it shares this site's database: the site's tables live in "public". The one
+// table they do not each have is the agenda: `appointments` is the site's, in "public", and
+// Omnicanal reads and writes it directly (omnicanal/lib/db/src/schema/appointments.ts).
 export const OMNI_DB_SCHEMA = "omnicanal";
 
 // Returns null when the integration is not configured; throws when it is configured wrong.
 // - OMNICANAL_SESSION_SECRET alone: Omnicanal runs inside this service (server/omni-embed.js),
-//   in this site's database, published under /omnicanal. OMNICANAL_DATABASE_URL moves it to
-//   another database.
-// - OMNICANAL_URL + OMNICANAL_SESSION_SECRET: an Omnicanal instance that runs somewhere else.
+//   in this site's database, published under /omnicanal. It must be this database: the agenda is
+//   one table that both read and write, so there is no other database to point it at.
+// - OMNICANAL_URL + OMNICANAL_SESSION_SECRET: an Omnicanal instance that runs somewhere else. It
+//   serves the chats, but it does not share the agenda.
 export function omniConfig(env = process.env) {
   const raw = String(env.OMNICANAL_URL || "").trim();
   const secret = String(env.OMNICANAL_SESSION_SECRET || "");
-  const ownDatabase = String(env.OMNICANAL_DATABASE_URL || "").trim();
-  if (ownDatabase && raw)
+  if (String(env.OMNICANAL_DATABASE_URL || "").trim())
     throw new Error(
-      "Usa OMNICANAL_DATABASE_URL (Omnicanal dentro de este servicio) u OMNICANAL_URL (una instancia aparte), no las dos.",
+      "OMNICANAL_DATABASE_URL ya no se usa: Omnicanal comparte la base del sitio, porque las citas son una sola tabla. Quítala del entorno.",
     );
-  if (!raw && (secret || ownDatabase)) {
-    if (!secret) throw new Error("Falta OMNICANAL_SESSION_SECRET.");
+  if (!raw && secret) {
     if (secret.length < 16) throw new Error("OMNICANAL_SESSION_SECRET es demasiado corta.");
-    const databaseUrl = ownDatabase || String(env.DATABASE_URL || "").trim();
+    const databaseUrl = String(env.DATABASE_URL || "").trim();
     if (!databaseUrl) throw new Error("Falta DATABASE_URL para Omnicanal.");
-    if (!ownDatabase && env.DATABASE_SCHEMA === OMNI_DB_SCHEMA)
+    if (env.DATABASE_SCHEMA === OMNI_DB_SCHEMA)
       throw new Error(`DATABASE_SCHEMA no puede ser "${OMNI_DB_SCHEMA}": ese esquema es de Omnicanal.`);
+    if (env.DATABASE_SCHEMA && env.DATABASE_SCHEMA !== "public")
+      throw new Error('Omnicanal lee la agenda del sitio en el esquema "public": DATABASE_SCHEMA no puede ser otro.');
     const port = env.OMNICANAL_PORT ? Number(env.OMNICANAL_PORT) : DEFAULT_EMBED_PORT;
     if (!Number.isInteger(port) || port < 1024 || port > 65535)
       throw new Error("OMNICANAL_PORT debe ser un puerto entre 1024 y 65535.");
@@ -64,7 +66,7 @@ export function omniConfig(env = process.env) {
     return {
       url: `http://127.0.0.1:${port}`,
       secret,
-      embedded: { port, databaseUrl, sharedDatabase: !ownDatabase },
+      embedded: { port, databaseUrl, sharedDatabase: true },
     };
   }
   if (!raw && !secret) return null;

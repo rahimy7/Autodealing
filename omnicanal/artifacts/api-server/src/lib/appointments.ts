@@ -8,7 +8,9 @@ import type { Appointment, AppointmentStatus } from "@workspace/db";
 // encima de una cita existente por el simple hecho de no pasar por la ruta.
 
 /** Una cita con el nombre del contacto y del agente ya resueltos. */
-export interface AppointmentView extends Appointment {
+// Los datos del cliente anotados por el sitio no salen aparte: se resumen en `contactName` y
+// `contactPhone` (ver `selection`).
+export interface AppointmentView extends Omit<Appointment, "customerName" | "customerPhone"> {
   contactName: string | null;
   contactPhone: string | null;
   agentName: string | null;
@@ -32,8 +34,10 @@ const selection = {
   reminderSentAt: appointmentsTable.reminderSentAt,
   createdAt: appointmentsTable.createdAt,
   updatedAt: appointmentsTable.updatedAt,
-  contactName: contactsTable.name,
-  contactPhone: contactsTable.phone,
+  // Una cita del sitio cuyo contacto aún no está en el CRM muestra el nombre y el
+  // teléfono con que la anotó el vendedor.
+  contactName: sql<string | null>`coalesce(${contactsTable.name}, nullif(${appointmentsTable.customerName}, ''))`,
+  contactPhone: sql<string | null>`coalesce(${contactsTable.phone}, nullif(${appointmentsTable.customerPhone}, ''))`,
   agentName: agentsTable.name,
 };
 
@@ -52,18 +56,16 @@ export function endOf(appointment: { startsAt: Date; durationMinutes: number }):
 }
 
 /**
- * Formatea una fecha como la escribe Drizzle en una columna `timestamp` (reloj
- * UTC, sin zona).
+ * Una fecha para una plantilla `sql` cruda, como instante UTC.
  *
  * Hace falta porque un `Date` metido en una plantilla `sql` cruda NO pasa por el
- * conversor de la columna: lo serializa el driver, que le pone el desfase local
- * ("…T16:00:00-04:00"), y Postgres descarta ese desfase al compararlo contra una
- * columna sin zona. El resultado es que la misma fecha vale dos cosas distintas
- * en las dos mitades de la condición de solapamiento, con cuatro horas de
- * diferencia — y citas encimadas.
+ * conversor de la columna: lo serializa el driver con el desfase local
+ * ("…T16:00:00-04:00"). La agenda es la del sitio y su `starts_at` es
+ * `timestamptz`, así que se compara contra un `timestamptz` explícito en UTC y
+ * el resultado no depende de la zona horaria de la conexión.
  */
-function toPgTimestamp(date: Date): string {
-  return date.toISOString().replace("T", " ").replace("Z", "");
+function toPgInstant(date: Date): string {
+  return date.toISOString();
 }
 
 export async function listAppointments(opts: {
@@ -108,7 +110,7 @@ export async function findConflicts(opts: {
     // SQL desde la duración para que el solapamiento lo resuelva la base y no
     // haya que traerse la agenda entera a memoria. Estricto (>) a propósito: una
     // cita que empieza justo cuando termina la anterior no se solapa.
-    sql`${appointmentsTable.startsAt} + (${appointmentsTable.durationMinutes} * interval '1 minute') > ${toPgTimestamp(opts.startsAt)}::timestamp`,
+    sql`${appointmentsTable.startsAt} + (${appointmentsTable.durationMinutes} * interval '1 minute') > ${toPgInstant(opts.startsAt)}::timestamptz`,
   ];
 
   if (opts.agentId != null) filters.push(eq(appointmentsTable.agentId, opts.agentId));

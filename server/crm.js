@@ -4,7 +4,7 @@
 // Only the routes below reach Omnicanal; nothing is passed through by path.
 import express from "express";
 import { query, transaction } from "./db.js";
-import { InputError, text, isUuid } from "./domain.js";
+import { InputError, text, isUuid, APPOINTMENT_KINDS } from "./domain.js";
 import { conversationView, messageView, vehicleMessage, isMediaFile, SAFE_MEDIA } from "./omnicanal.js";
 import {
   DEALER_TZ,
@@ -20,7 +20,7 @@ import {
   omniRequest,
   syncInventory,
 } from "./omni-service.js";
-import { appointmentView, createAppointment } from "./agenda.js";
+import { appointmentView, confirmAppointment } from "./agenda.js";
 
 const OPEN_STATUSES = ["open", "pending", "bot"];
 const intParam = (v) => /^\d{1,9}$/.test(String(v)) && Number(v) > 0;
@@ -66,6 +66,27 @@ export function crmRouter({ admin, audit }) {
       me,
       panelUrl: req.user.role === "admin" ? omniPanelUrl() : undefined,
     });
+  });
+
+  // Omnicanal's screens as entries of the administration's own menu, which opens them inside its
+  // page (one administration). Omnicanal decides which ones: the screens this administrator has and
+  // the instance has on. Its user administration and the operator portal are not listed: the team
+  // is managed in this site (Equipo).
+  const NOT_LISTED = new Set(["admin", "platform"]);
+  r.get("/menu", admin, async (req, res) => {
+    try {
+      const status = await connectionStatus();
+      if (!status.connected) return res.json({ connected: false, entries: [] });
+      const { entries = [] } = (await omniRequest(await identityFor(req.user), "/nav")) || {};
+      res.json({
+        connected: true,
+        entries: entries
+          .filter((e) => !NOT_LISTED.has(e.key) && typeof e.path === "string" && e.path.startsWith("/"))
+          .map((e) => ({ key: e.key, label: String(e.label), group: e.group, path: e.path })),
+      });
+    } catch (error) {
+      res.json({ connected: false, entries: [], error: error.message });
+    }
   });
 
   // ── Administration ──────────────────────────────────────────────────────────────────────
@@ -224,75 +245,47 @@ export function crmRouter({ admin, audit }) {
   });
 
   // ── Appointments the virtual agent booked on WhatsApp/Instagram/Facebook ────────────────
-  async function omniAppointments(fromDays, toDays) {
-    const from = new Date(Date.now() - fromDays * 86400000).toISOString();
-    const to = new Date(Date.now() + toDays * 86400000).toISOString();
-    return (
-      (await omniRequest(
-        await systemIdentity(),
-        `/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-      )) || []
-    );
-  }
-
+  // The agenda is one table the site and Omnicanal share, so these are its "pending" rows: what
+  // the virtual agent booked and nobody on the team has taken yet.
   r.get("/appointments", async (req, res) => {
-    const list = (await omniAppointments(1, 60)).filter((a) => !["cancelled", "completed", "no_show"].includes(a.status));
-    const ids = list.map((a) => a.id);
-    const linked = ids.length
-      ? (await query("SELECT omni_appointment_id id FROM appointments WHERE omni_appointment_id=ANY($1::int[])", [ids])).rows.map((x) => x.id)
-      : [];
-    let mine = null;
-    if (req.user.role !== "admin") mine = (await query("SELECT omni_agent_id FROM admin_users WHERE id=$1", [req.user.id])).rows[0]?.omni_agent_id ?? null;
+    const params = [];
+    let where = "a.status='pending' AND a.starts_at>now()-interval '1 day'";
+    if (req.user.role !== "admin") where += ` AND (a.seller_id=$${params.push(req.user.id)} OR a.seller_id IS NULL)`;
+    const { rows } = await query(
+      `SELECT a.id,a.customer_name,a.customer_phone,a.omni_conversation_id,a.service,a.notes,a.starts_at,a.duration_minutes,a.status,a.source,su.name seller_name
+       FROM appointments a LEFT JOIN admin_users su ON su.id=a.seller_id WHERE ${where} ORDER BY a.starts_at LIMIT 200`,
+      params,
+    );
     res.json(
-      list
-        .filter((a) => !linked.includes(a.id))
-        .filter((a) => req.user.role === "admin" || a.agentId == null || a.agentId === mine)
-        .map((a) => ({
-          id: a.id,
-          contactName: a.contactName || "",
-          contactPhone: a.contactPhone || "",
-          conversationId: a.conversationId ?? null,
-          agentName: a.agentName || "",
-          service: a.service,
-          notes: a.notes || "",
-          startsAt: a.startsAt,
-          local: local(a.startsAt),
-          durationMinutes: a.durationMinutes,
-          status: a.status,
-          source: a.source,
-        })),
+      rows.map((a) => ({
+        id: a.id,
+        contactName: a.customer_name,
+        contactPhone: a.customer_phone,
+        conversationId: a.omni_conversation_id ?? null,
+        agentName: a.seller_name || "",
+        service: a.service,
+        notes: a.notes || "",
+        startsAt: a.starts_at,
+        local: local(a.starts_at),
+        durationMinutes: a.duration_minutes,
+        status: a.status,
+        source: a.source,
+      })),
     );
   });
 
-  // Takes a booking from Omnicanal into the agenda: it counts for the salesperson and Omnicanal
-  // records it as confirmed and assigned to their agent.
-  r.post("/appointments/:oid/confirm", async (req, res) => {
-    const oid = Number(req.params.oid);
-    const found = (await omniAppointments(7, 400)).find((a) => a.id === oid);
-    if (!found) throw new InputError("Esa cita ya no está en Omnicanal.", 404);
-    if (["cancelled", "completed", "no_show"].includes(found.status))
-      throw new InputError("Esa cita ya no está pendiente.", 409);
-    const kind = ["testdrive", "visit", "delivery", "call", "followup"].includes(req.body.kind) ? req.body.kind : "visit";
-    if (req.body.vehicleId != null && !isUuid(req.body.vehicleId)) throw new InputError("Vehículo inválido.");
-    const name = text(found.contactName, 160) || "Cliente de Omnicanal";
-    const phone = text(found.contactPhone, 60);
-    const id = await createAppointment(req.user, {
+  // Takes a pending booking into the agenda: it counts for the salesperson, and Omnicanal sees the
+  // same row as confirmed and assigned to their agent.
+  r.post("/appointments/:id/confirm", async (req, res) => {
+    if (!isUuid(req.params.id)) throw new InputError("Esa cita no existe.", 404);
+    const kind = APPOINTMENT_KINDS.includes(req.body.kind) ? req.body.kind : "visit";
+    if (req.body.vehicleId != null && req.body.vehicleId !== "" && !isUuid(req.body.vehicleId)) throw new InputError("Vehículo inválido.");
+    await confirmAppointment(req.user, req.params.id, {
       kind,
-      startsAt: found.startsAt,
-      durationMinutes: Math.min(600, Math.max(15, Number(found.durationMinutes) || 60)),
-      customerName: name,
-      customerPhone: phone,
-      customerEmail: "",
-      notes: text([found.service, found.notes].filter(Boolean).join(" · "), 2000),
       vehicleId: req.body.vehicleId || null,
-      leadId: null,
       sellerId: req.user.role === "admin" && isUuid(req.body.sellerId) ? req.body.sellerId : null,
-      status: "confirmed",
-      omniAppointmentId: oid,
-      omniContactId: found.contactId,
-      omniConversationId: found.conversationId ?? null,
     });
-    res.status(201).json(await appointmentView(id));
+    res.status(201).json(await appointmentView(req.params.id));
   });
 
   return r;

@@ -5,6 +5,7 @@ import express from "express";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import sharp from "sharp";
 const databaseUrl = process.env.DATABASE_URL;
 const SECRET = "omni-" + randomBytes(16).toString("hex");
 
@@ -20,9 +21,8 @@ function fakeOmnicanal() {
       { id: 10, name: "Ex agente", email: "ex@premier.test", type: "human", role: "agent", isActive: false, status: "offline", activeChats: 0, createdAt: new Date() },
     ],
     contacts: [{ id: 900, name: "Cliente WhatsApp", phone: "12015550100", email: null }],
-    appointments: [
-      { id: 501, contactId: 900, contactName: "Cliente WhatsApp", contactPhone: "12015550100", conversationId: 31, agentId: null, agentName: null, service: "Prueba de manejo", notes: "Quiere ver una SUV", startsAt: new Date(Date.now() + 2 * 86400000).toISOString(), durationMinutes: 60, status: "pending", source: "ai", createdAt: new Date() },
-    ],
+    // When true the CRM refuses new contacts, as it does while it is down.
+    contactsDown: false,
     kbs: new Map(),
     conversations: [
       { id: 31, channel: "whatsapp", status: "bot", contactId: 900, contactName: "Cliente WhatsApp", contactPhone: "12015550100", agentId: 9, agentName: "Asistente IA", lastMessage: "¿Tienen SUV?", unreadCount: 2, updatedAt: new Date(), messagingWindowExpiresAt: new Date(Date.now() + 86400000) },
@@ -73,22 +73,10 @@ function fakeOmnicanal() {
     res.json(state.contacts.filter((c) => !s || (c.phone || "").includes(s) || (c.email || "").toLowerCase().includes(s)));
   });
   app.post("/api/contacts", (req, res) => {
+    if (state.contactsDown) return res.status(503).send("<html>Service Unavailable</html>");
     const c = { id: nextId++, ...req.body };
     state.contacts.push(c);
     res.status(201).json(c);
-  });
-  app.get("/api/appointments", (_req, res) => res.json(state.appointments));
-  app.post("/api/appointments", (req, res) => {
-    if (req.body.notes === "omnicanal-down") return res.status(503).send("<html>Service Unavailable</html>");
-    const a = { id: nextId++, source: req.user.role === "admin" ? "admin" : "agent", createdAt: new Date(), ...req.body };
-    state.appointments.push(a);
-    res.status(201).json(a);
-  });
-  app.patch("/api/appointments/:id", (req, res) => {
-    const a = state.appointments.find((x) => x.id === Number(req.params.id));
-    if (!a) return res.status(404).json({ error: "Appointment not found" });
-    Object.assign(a, req.body);
-    res.json(a);
   });
   app.post("/api/knowledge-bases", (req, res) => {
     const kb = { id: nextId++, ...req.body };
@@ -166,6 +154,9 @@ test("sales app, reservations, agenda, reports and the Omnicanal integration", {
       OMNICANAL_SESSION_SECRET: SECRET,
       // The fake instance above, never an Omnicanal inside this process.
       OMNICANAL_DATABASE_URL: "",
+      // The owner's real credentials in .env must not leak into the test server.
+      ADMIN_PASSWORD: "",
+      ADMIN_EMAIL: "",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -308,18 +299,21 @@ test("sales app, reservations, agenda, reports and the Omnicanal integration", {
       assert.equal((await send("admin", "/api/admin/reservations?status=expired")).data[0].id, r.data.id);
     });
 
-    await t.test("appointments avoid double booking and are recorded in Omnicanal for the agent", async () => {
+    await t.test("appointments avoid double booking and are the same rows Omnicanal reads", async () => {
       const appt = { kind: "testdrive", date: tomorrow, time: "10:00", durationMinutes: 60, vehicleId: ids.v2, customerName: "Prueba Uno", customerPhone: "+1 201 555 0133" };
       const r = await send("ana", "/api/admin/appointments", { method: "POST", body: appt });
       assert.equal(r.status, 201, JSON.stringify(r.data));
       ids.appt = r.data.id;
       assert.equal(r.data.local_time, "10:00");
       assert.equal(r.data.sync_error, null);
-      const remote = omni.state.appointments.find((a) => a.id === r.data.omni_appointment_id);
-      assert.equal(remote.agentId, 7);
-      assert.equal(remote.status, "confirmed");
-      assert.match(remote.service, /Prueba de manejo · 2023 Honda Pilot SA-2/);
-      assert.ok(omni.state.contacts.some((c) => c.id === remote.contactId && c.name === "Prueba Uno"));
+      // The row itself is what Omnicanal's agenda shows: nothing is sent to it.
+      assert.equal(r.data.status, "confirmed");
+      assert.equal(r.data.source, "agent");
+      assert.equal(r.data.agent_id, 7, "the seller's agent follows from the seller");
+      assert.match(r.data.service, /Prueba de manejo · 2023 Honda Pilot SA-2/);
+      assert.match(r.data.location, /River Street/);
+      assert.ok(Number.isInteger(r.data.omni_appointment_id), "every appointment has Omnicanal's number");
+      assert.ok(omni.state.contacts.some((c) => c.id === r.data.omni_contact_id && c.name === "Prueba Uno"), "the customer is a contact in the CRM");
       assert.equal((await send("ana", "/api/admin/appointments", { method: "POST", body: { ...appt, time: "10:30", vehicleId: null } })).status, 409);
       const sameCar = await send("beto", "/api/admin/appointments", { method: "POST", body: { ...appt, time: "10:30" } });
       assert.equal(sameCar.status, 409);
@@ -329,25 +323,69 @@ test("sales app, reservations, agenda, reports and the Omnicanal integration", {
       assert.equal((await send("beto", `/api/admin/appointments/${ids.appt}`, { method: "PUT", body: { status: "completed" } })).status, 403);
       const done = await send("ana", `/api/admin/appointments/${ids.appt}`, { method: "PUT", body: { status: "completed" } });
       assert.equal(done.status, 200);
-      assert.equal(remote.status, "completed");
-      const outage = await send("ana", "/api/admin/appointments", { method: "POST", body: { ...appt, time: "17:00", vehicleId: null, notes: "omnicanal-down" } });
+      assert.equal(done.data.status, "completed");
+      // While the CRM is down the appointment is still saved, and the next edit links the contact.
+      omni.state.contactsDown = true;
+      const outage = await send("ana", "/api/admin/appointments", { method: "POST", body: { ...appt, time: "17:00", vehicleId: null, customerName: "Sin CRM" } });
       assert.equal(outage.status, 201, "an Omnicanal outage never loses the appointment");
-      assert.equal(outage.data.omni_appointment_id, null);
+      assert.equal(outage.data.omni_contact_id, null);
       assert.match(outage.data.sync_error, /Omnicanal/);
+      omni.state.contactsDown = false;
+      const retried = await send("ana", `/api/admin/appointments/${outage.data.id}`, { method: "PUT", body: { notes: "Ya hay CRM" } });
+      assert.equal(retried.status, 200);
+      assert.equal(retried.data.sync_error, null);
+      assert.ok(retried.data.omni_contact_id, "the contact is linked once Omnicanal answers");
+    });
+
+    await t.test("the seller and Omnicanal's agent stay in step, whichever side changes it", async () => {
+      const appts = `${schema}.appointments`;
+      const row = async (id) => (await db.query(`SELECT seller_id,agent_id FROM ${appts} WHERE id=$1`, [id])).rows[0];
+      // Omnicanal assigns an agent: the site shows that person as the seller.
+      await db.query(`UPDATE ${appts} SET agent_id=8 WHERE id=$1`, [ids.appt]);
+      assert.deepEqual(await row(ids.appt), { seller_id: sessions.beto.id, agent_id: 8 });
+      // The site hands it back to another seller: the agent follows.
+      await db.query(`UPDATE ${appts} SET seller_id=$2 WHERE id=$1`, [ids.appt, sessions.ana.id]);
+      assert.deepEqual(await row(ids.appt), { seller_id: sessions.ana.id, agent_id: 7 });
+      // An agent nobody on the site is linked to leaves the seller empty and keeps the agent.
+      await db.query(`UPDATE ${appts} SET agent_id=10 WHERE id=$1`, [ids.appt]);
+      assert.deepEqual(await row(ids.appt), { seller_id: null, agent_id: 10 });
+      await db.query(`UPDATE ${appts} SET seller_id=$2 WHERE id=$1`, [ids.appt, sessions.ana.id]);
     });
 
     await t.test("appointments the virtual agent booked can be confirmed into the agenda", async () => {
+      // What Omnicanal inserts: a name-less row for a contact, nothing about sellers or vehicles.
+      const booked = await db.query(
+        `INSERT INTO ${schema}.appointments(starts_at,duration_minutes,notes,status,omni_contact_id,omni_conversation_id,service,location,source)
+         VALUES(now()+interval '2 days',60,'Quiere ver una SUV','pending',2000000000,31,'Prueba de manejo','Paterson','ai') RETURNING id,kind,customer_name,created_by,omni_appointment_id`,
+      );
+      const bookedId = booked.rows[0].id;
+      assert.equal(booked.rows[0].kind, "visit");
+      assert.equal(booked.rows[0].created_by, null);
+      assert.ok(booked.rows[0].omni_appointment_id > 0);
+      assert.equal(booked.rows[0].customer_name, "Cliente de Omnicanal", "no name to show until the CRM contact is read");
       const pending = await send("ana", "/api/admin/crm/appointments");
-      assert.deepEqual(pending.data.map((a) => a.id), [501]);
-      const r = await send("ana", "/api/admin/crm/appointments/501/confirm", { method: "POST", body: { kind: "testdrive" } });
+      assert.deepEqual(pending.data.map((a) => a.id), [bookedId]);
+      assert.equal(pending.data[0].status, "pending");
+      assert.equal(pending.data[0].conversationId, 31);
+      assert.equal((await send("ana", "/api/admin/crm/appointments/not-an-id/confirm", { method: "POST", body: {} })).status, 404);
+      const r = await send("ana", `/api/admin/crm/appointments/${bookedId}/confirm`, { method: "POST", body: { kind: "testdrive" } });
       assert.equal(r.status, 201, JSON.stringify(r.data));
-      assert.equal(r.data.customer_name, "Cliente WhatsApp");
+      assert.equal(r.data.id, bookedId, "it is the same row, not a copy");
+      assert.equal(r.data.status, "confirmed");
       assert.equal(r.data.omni_conversation_id, 31);
-      const remote = omni.state.appointments.find((a) => a.id === 501);
-      assert.equal(remote.agentId, 7);
-      assert.equal(remote.status, "confirmed");
+      assert.equal(r.data.agent_id, 7, "Omnicanal sees it assigned to Ana's agent");
+      assert.equal(r.data.seller_name, "Ana Ventas");
+      assert.match(r.data.notes, /Prueba de manejo · Quiere ver una SUV/, "what the customer asked for is kept");
       assert.equal((await send("ana", "/api/admin/crm/appointments")).data.length, 0);
-      assert.equal((await send("beto", "/api/admin/crm/appointments/501/confirm", { method: "POST", body: {} })).status, 409);
+      assert.equal((await send("beto", `/api/admin/crm/appointments/${bookedId}/confirm`, { method: "POST", body: {} })).status, 409);
+      // A booking another seller already holds is not for Ana to take.
+      const held = await db.query(
+        `INSERT INTO ${schema}.appointments(starts_at,duration_minutes,status,omni_contact_id,service,source,agent_id)
+         VALUES(now()+interval '3 days',60,'pending',2000000001,'Visita','ai',8) RETURNING id`,
+      );
+      assert.equal((await send("ana", "/api/admin/crm/appointments")).data.length, 0, "another seller's pending bookings are not listed");
+      assert.equal((await send("ana", `/api/admin/crm/appointments/${held.rows[0].id}/confirm`, { method: "POST", body: {} })).status, 403);
+      assert.equal((await send("admin", "/api/admin/crm/appointments")).data.length, 1);
     });
 
     await t.test("salespeople answer chats as their own agent", async () => {
@@ -459,12 +497,179 @@ test("sales app, reservations, agenda, reports and the Omnicanal integration", {
     await t.test("the sales app is served with the panel's security policy", async () => {
       const page = await send(null, "/ventas/");
       assert.equal(page.status, 200);
-      assert.match(page.data, /App de ventas|APP DE VENTAS/);
+      assert.match(page.data, /Premier App/);
       const csp = page.response.headers.get("content-security-policy");
       assert.match(csp, /script-src 'self'/);
       assert.match(csp, /frame-ancestors 'none'/);
-      assert.equal((await send(null, "/ventas/ventas.js")).status, 200);
+      assert.match(csp, /font-src https:\/\/fonts.gstatic.com/, "the site's fonts, like the public page");
+      for (const file of ["ventas.js", "core.js", "units.js", "quotes.js", "manifest.webmanifest", "icon-512.png"])
+        assert.equal((await send(null, "/ventas/" + file)).status, 200, file);
+      assert.equal((await send(null, "/js/quote-math.js")).status, 200, "the quote math is shared with the app");
       assert.equal((await send(null, "/api/admin/catalog")).status, 401);
+      const app = await fetch(base + "/app", { redirect: "manual" });
+      assert.equal(app.headers.get("location"), "/ventas/");
+    });
+
+    const jpeg = await sharp({ create: { width: 64, height: 40, channels: 3, background: "#4a5568" } }).jpeg().toBuffer();
+    const photo = async (who, vehicleId) => {
+      const form = new FormData();
+      form.append("photo", new Blob([jpeg], { type: "image/jpeg" }), "lote.jpg");
+      const r = await fetch(`${base}/api/admin/vehicles/${vehicleId}/photos`, { method: "POST", body: form, headers: { Cookie: sessions[who].cookie, "X-CSRF-Token": sessions[who].csrf } });
+      return { status: r.status, data: await r.json() };
+    };
+
+    await t.test("the service profile loads units and keeps an agenda, but does not sell", async () => {
+      assert.equal((await send("admin", "/api/admin/users", { method: "POST", body: { username: "sofi", name: "Sofi Servicio", role: "service", password } })).status, 201);
+      assert.equal((await send("admin", "/api/admin/users", { method: "POST", body: { username: "nadie", name: "Nadie", role: "boss", password } })).status, 400);
+      await login("sofi", "sofi");
+      const r = await send("admin", "/api/admin/vehicles", { method: "POST", body: vehicleBody("SA-Q1", { price: 25000 }) });
+      ids.q1 = r.data.id;
+      for (const [method, url, body] of [
+        ["POST", "/api/admin/reservations", { vehicleId: ids.q1, customerName: "C", customerPhone: "2015550100" }],
+        ["GET", "/api/admin/reservations"],
+        ["POST", "/api/admin/sales", { vehicleId: ids.q1, price: 1, buyerName: "C", soldAt: "2026-01-01" }],
+        ["GET", "/api/admin/sales"],
+        ["GET", "/api/admin/leads"],
+        ["POST", "/api/admin/quotes", { vehicleId: ids.q1, customerName: "C", customerPhone: "2015550100" }],
+        ["GET", "/api/admin/quotes"],
+        ["GET", "/api/admin/users"],
+      ])
+        assert.equal((await send("sofi", url, { method, body })).status, 403, `${method} ${url}`);
+      assert.equal((await send("sofi", "/api/admin/catalog")).status, 200);
+      const appt = await send("sofi", "/api/admin/appointments", { method: "POST", body: { kind: "service", date: tomorrow, time: "08:00", durationMinutes: 120, customerName: "Cliente Taller", customerPhone: "2015550188", notes: "Cambio de aceite" } });
+      assert.equal(appt.status, 201, JSON.stringify(appt.data));
+      assert.equal(appt.data.kind, "service");
+      assert.equal(appt.data.service, "Servicio / taller");
+      assert.equal(appt.data.seller_id, sessions.sofi.id);
+      const toService = await send("admin", "/api/admin/reservations", { method: "POST", body: { vehicleId: ids.q1, customerName: "C", customerPhone: "2015550100", sellerId: sessions.sofi.id } });
+      assert.equal(toService.status, 400, "a reservation is never a service person's");
+      const sum = await send("sofi", "/api/admin/me/summary");
+      assert.equal(sum.status, 200);
+      assert.deepEqual(sum.data.units, { drafts: 0, loaded: 0, published: 0 });
+    });
+
+    await t.test("units loaded from the lot wait for administration's details and price", async () => {
+      const unit = { body: "suv", year: 2021, make: "Toyota", model: "RAV4", miles: 41000, vin: "2T3W1RFV0MW123456", ext: "Blanco", notes: "Rayón en la puerta trasera", engine: "2.5L 4 cil.", drive: "AWD" };
+      const intake = await send("sofi", "/api/admin/intake", { method: "POST", body: { ...unit, price: 999, status: "available", featured: true } });
+      assert.equal(intake.status, 201, JSON.stringify(intake.data));
+      ids.intake = intake.data.id;
+      let v = (await send("admin", "/api/admin/vehicles")).data.find((x) => x.id === ids.intake);
+      assert.equal(v.status, "draft", "whatever the app sends, it is a draft");
+      assert.equal(v.priceOnRequest, true);
+      assert.equal(v.price, 0);
+      assert.equal(v.featured, false);
+      assert.match(v.stock, /^IN-\d{6}-[2-9A-HJ-NP-Z]{3}$/);
+      assert.equal(v.intakeName, "Sofi Servicio");
+      assert.equal(v.intakeNotes, "Rayón en la puerta trasera");
+      assert.equal(v.engine, "2.5L 4 cil.");
+      assert.deepEqual(v.cats, ["suv"]);
+      assert.ok(!(await send(null, "/api/inventory")).data.some((x) => x.id === ids.intake), "a draft is not published");
+      assert.ok(!(await send("ana", "/api/admin/catalog")).data.some((x) => x.id === ids.intake));
+      assert.equal((await send("ana", "/api/admin/vehicles", { method: "POST", body: vehicleBody("SA-NOPE") })).status, 403, "details and price are administration's");
+      assert.equal((await send("sofi", `/api/admin/vehicles/${ids.intake}`, { method: "PUT", body: { ...v, price: 1 } })).status, 403);
+      assert.equal((await send("ana", `/api/admin/intake/${ids.intake}`, { method: "PUT", body: unit })).status, 403, "only whoever loaded it");
+      assert.equal((await send("sofi", `/api/admin/intake/${ids.intake}`, { method: "PUT", body: { ...unit, model: "RAV4 Hybrid", miles: 41050, fuel: "hybrid" } })).status, 200);
+      assert.equal((await send("sofi", "/api/admin/intake")).data.length, 1);
+      assert.equal((await send("ana", "/api/admin/intake")).data.length, 0);
+      assert.ok((await send("admin", "/api/admin/intake")).data.some((x) => x.id === ids.intake), "administration sees every draft");
+      assert.equal((await send("sofi", "/api/admin/me/summary")).data.units.drafts, 1);
+
+      const p1 = await photo("sofi", ids.intake);
+      const p2 = await photo("sofi", ids.intake);
+      assert.equal(p1.status, 201);
+      assert.equal((await send("sofi", `/api/admin/vehicles/${ids.intake}/photos/order`, { method: "PUT", body: { ids: [p2.data.id, p1.data.id] } })).status, 200);
+      assert.equal((await send("ana", `/api/admin/vehicles/${ids.intake}/photos/${p1.data.id}`, { method: "DELETE" })).status, 403);
+
+      v = (await send("admin", "/api/admin/vehicles")).data.find((x) => x.id === ids.intake);
+      assert.equal(v.model, "RAV4 Hybrid");
+      assert.equal(v.fuel, "hybrid");
+      assert.deepEqual(v.photos.map((p) => p.id), [p2.data.id, p1.data.id]);
+      const pub = await send("admin", `/api/admin/vehicles/${ids.intake}`, { method: "PUT", body: { ...v, status: "available", price: 27500, msrp: 27500, priceOnRequest: false, purchaseCost: 21000 } });
+      assert.equal(pub.status, 200, JSON.stringify(pub.data));
+      const live = (await send(null, "/api/inventory")).data.find((x) => x.id === ids.intake);
+      assert.equal(live.price, 27500);
+      assert.equal(live.photos.length, 2);
+      assert.ok(!JSON.stringify(live).includes("Rayón"), "the loader's notes never reach the public catalogue");
+      assert.equal(live.intakeName, undefined);
+      assert.equal((await send("sofi", `/api/admin/intake/${ids.intake}`, { method: "PUT", body: unit })).status, 409, "published: administration's now");
+      assert.equal((await send("sofi", `/api/admin/vehicles/${ids.intake}/photos/${p1.data.id}`, { method: "DELETE" })).status, 403);
+      assert.equal((await photo("ana", ids.intake)).status, 201, "anyone may add photos");
+      assert.equal((await send("sofi", "/api/admin/me/summary")).data.units.published, 1);
+
+      const mistake = await send("ana", "/api/admin/intake", { method: "POST", body: { ...unit, vin: "" } });
+      assert.equal(mistake.status, 201);
+      assert.equal((await send("sofi", `/api/admin/intake/${mistake.data.id}/discard`, { method: "POST", body: {} })).status, 403);
+      assert.equal((await send("ana", `/api/admin/intake/${mistake.data.id}/discard`, { method: "POST", body: {} })).status, 200);
+      assert.equal((await send("admin", "/api/admin/vehicles")).data.find((x) => x.id === mistake.data.id).status, "archived");
+      assert.equal((await send("ana", "/api/admin/intake/vin/ABC")).status, 400);
+    });
+
+    await t.test("quotes use administration's price and open for the customer", async () => {
+      assert.equal((await send("ana", "/api/admin/quote-settings", { method: "PUT", body: { taxRate: 1, term: 72 } })).status, 403);
+      const st = await send("admin", "/api/admin/quote-settings", { method: "PUT", body: { taxRate: 6.625, docFee: 499, apr: 6.9, term: 72, validDays: 3, note: "Placas no incluidas." } });
+      assert.equal(st.status, 200, JSON.stringify(st.data));
+      assert.equal((await send("ana", "/api/admin/quote-settings")).data.taxRate, 6.625);
+      const customer = { customerName: "Laura Cliente", customerPhone: "(201) 555-0177" };
+      const unpriced = await send("admin", "/api/admin/vehicles", { method: "POST", body: vehicleBody("SA-NP", { priceOnRequest: true, price: 0, msrp: 0 }) });
+      assert.equal((await send("ana", "/api/admin/quotes", { method: "POST", body: { vehicleId: unpriced.data.id, ...customer } })).status, 409, "no price, no quote");
+      assert.equal((await send("ana", "/api/admin/quotes", { method: "POST", body: { vehicleId: ids.demo, ...customer } })).status, 409);
+      const q = await send("ana", "/api/admin/quotes", { method: "POST", body: { vehicleId: ids.intake, ...customer, price: 1000, taxRate: 0, fees: 0, down: 2500, tradeIn: 4000, termMonths: 60, apr: 7.9, notes: "Incluye alfombras" } });
+      assert.equal(q.status, 201, JSON.stringify(q.data));
+      const f = q.data.figures;
+      assert.equal(f.price, 27500, "a salesperson quotes administration's price");
+      assert.equal(f.fees, 499);
+      assert.equal(f.taxRate, 6.625);
+      assert.equal(f.tax, 1556.88);
+      assert.equal(f.total, 29555.88);
+      assert.equal(f.balance, Math.round((f.total - 6500) * 100) / 100);
+      assert.equal(f.termMonths, 60);
+      assert.ok(f.monthly > 400 && f.monthly < 500, String(f.monthly));
+      assert.match(q.data.code, /^COT-\d{5}$/);
+      assert.match(q.data.link, /\/cotizacion\/[A-Za-z0-9_-]{24}$/);
+      assert.equal(q.data.sellerName, "Ana Ventas");
+      const qa = await send("admin", "/api/admin/quotes", { method: "POST", body: { vehicleId: ids.intake, customerName: "VIP", customerEmail: "vip@premier.test", price: 26000, taxRate: 0, fees: 0, termMonths: 0 } });
+      assert.equal(qa.status, 201, JSON.stringify(qa.data));
+      assert.equal(qa.data.figures.balance, 26000, "administration may quote another price");
+      assert.equal((await send("beto", "/api/admin/quotes")).data.length, 0);
+      assert.equal((await send("beto", `/api/admin/quotes/${q.data.id}`)).status, 404);
+      assert.equal((await send("ana", "/api/admin/quotes")).data.length, 1);
+      assert.equal((await send("admin", "/api/admin/quotes")).data.length, 2);
+      assert.equal((await send("ana", "/api/admin/me/summary")).data.quotes.count, 1);
+      const page = await send(null, new URL(q.data.link).pathname);
+      assert.equal(page.status, 200);
+      assert.match(page.data, /Laura Cliente/);
+      assert.match(page.data, /Incluye alfombras/);
+      assert.match(page.data, /Placas no incluidas/);
+      assert.match(page.data, new RegExp(`/media/vehicles/${ids.intake}/`));
+      assert.match(page.response.headers.get("x-robots-tag"), /noindex/);
+      assert.match(page.response.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+      assert.match((await send(null, new URL(q.data.link).pathname + "?lang=en")).data, /Prepared for/);
+      assert.equal((await send(null, "/cotizacion/" + "x".repeat(24))).status, 404);
+      assert.equal((await send(null, "/cotizacion/short")).status, 404);
+    });
+
+    await t.test("administration manages profiles and passwords and always keeps an administrator", async () => {
+      assert.equal((await send("ana", `/api/admin/users/${sessions.sofi.id}`, { method: "PUT", body: { name: "x", role: "admin" } })).status, 403);
+      assert.equal((await send("admin", `/api/admin/users/${sessions.sofi.id}`, { method: "PUT", body: { name: "Sofía Ventas", role: "sales" } })).status, 200);
+      assert.equal((await send("sofi", "/api/admin/quotes")).status, 200, "a new profile applies at once");
+      assert.equal((await send("admin", `/api/admin/users/${sessions.admin.id}`, { method: "PUT", body: { name: "Admin", role: "sales" } })).status, 400, "not one's own profile");
+      assert.equal((await send("admin", `/api/admin/users/${sessions.admin.id}/password`, { method: "POST", body: { password: "x".repeat(20) } })).status, 400, "one's own password is changed in Mi cuenta");
+      const fresh = "Nueva-" + password;
+      assert.equal((await send("admin", `/api/admin/users/${sessions.carla.id}/password`, { method: "POST", body: { password: "corta" } })).status, 400);
+      assert.equal((await send("admin", `/api/admin/users/${sessions.carla.id}/password`, { method: "POST", body: { password: fresh } })).status, 200);
+      assert.equal((await send("carla", "/api/admin/me/summary")).status, 401, "her open sessions end");
+      const relog = await send(null, "/api/auth/login", { method: "POST", body: { username: "carla", password: fresh } });
+      assert.equal(relog.status, 200);
+      sessions.carla = { cookie: relog.response.headers.get("set-cookie").split(";")[0], csrf: relog.data.user.csrf, id: relog.data.user.id };
+      // Two administrators demoting each other at once: one of them stays.
+      assert.equal((await send("admin", `/api/admin/users/${sessions.carla.id}`, { method: "PUT", body: { name: "Carla Admin", role: "admin" } })).status, 200);
+      const results = await Promise.all([
+        send("admin", `/api/admin/users/${sessions.carla.id}`, { method: "PUT", body: { name: "Carla Ventas", role: "sales" } }),
+        send("carla", `/api/admin/users/${sessions.admin.id}`, { method: "PUT", body: { name: "Administración Premier", role: "sales" } }),
+      ]);
+      assert.equal(results.filter((r) => r.status === 200).length, 1, JSON.stringify(results.map((r) => [r.status, r.data])));
+      const left = await db.query(`SELECT count(*)::integer n FROM ${schema}.admin_users WHERE role='admin' AND active`);
+      assert.equal(left.rows[0].n, 1);
     });
   } finally {
     proc.kill("SIGTERM");

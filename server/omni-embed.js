@@ -1,9 +1,11 @@
-// Omnicanal inside this service. With OMNICANAL_DATABASE_URL set, the site starts Omnicanal's
+// Omnicanal inside this service. With OMNICANAL_SESSION_SECRET set, the site starts Omnicanal's
 // built server (omnicanal/, compiled by `npm run omnicanal:build` or the Dockerfile) as a child
 // process on a loopback port and publishes it under /omnicanal on this same domain: one deploy,
-// one domain, one sign-in. Omnicanal keeps its own process and its own database, so a crash or
-// a slow AI reply there never takes the catalogue down, and its tables never meet the site's.
+// one domain, one sign-in. Omnicanal keeps its own process and its own schema of the site's database
+// (the agenda is the one table they share), so a crash or
+// a slow AI reply there never takes the catalogue down, and, agenda aside, its tables never meet the site's.
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -11,6 +13,7 @@ import { pipeline } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { EMBED_PREFIX } from "./omnicanal.js";
 import { workHours } from "./work-hours.js";
+import { mergeLegacyAppointmentsFromUrl } from "./appointments-merge.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const OMNI_ROOT = path.join(root, "omnicanal");
@@ -52,6 +55,8 @@ export function childEnv(env, cfg, hours = workHours(env)) {
     PORT: String(cfg.embedded.port),
     HOST: "127.0.0.1",
     DATABASE_URL: cfg.embedded.databaseUrl,
+    // One administration: the site's account is the only way in (omnicanal/.../lib/auth.ts).
+    SITE_LOGIN_ONLY: "1",
     SESSION_SECRET: cfg.secret,
     CLIENT_ID: env.CLIENT_ID || "premier",
     // Omnicanal's background checks keep the team's hours too (server/work-hours.js).
@@ -97,9 +102,12 @@ export async function migrateOmnicanal(
         resolve(code === 0);
       });
     });
-  // The schema first (drizzle-kit 0.31 doesn't create it), then the tables inside it only.
+  // The schema first (drizzle-kit 0.31 doesn't create it); then Omnicanal's old appointments, if
+  // it still has any, move into the agenda it now shares with the site (so the update below has
+  // no table to drop); then the tables inside its schema only.
   return (
     (await run(process.execPath, ["./ensure-schema.mjs"])) &&
+    (await mergeLegacyAppointmentsFromUrl(cfg.embedded.databaseUrl)) &&
     (await run(DRIZZLE_KIT, ["push", "--config", "./drizzle.config.ts"]))
   );
 }
@@ -252,16 +260,100 @@ const scriptJson = (value) =>
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
 
+// Framed by the site only: the administration opens the panel inside its own page.
 export const handoffCsp = (nonce) =>
-  `default-src 'none'; script-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+  `default-src 'none'; script-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'`;
 
-export function handoffPage({ token, user }, nonce) {
+// Where inside the panel a sign-in leads: a path of the panel and nothing else, never another site.
+export function panelNext(value) {
+  const v = String(value ?? "");
+  if (!v.startsWith("/") || v.startsWith("//") || v.length > 300) return "/";
+  if (!/^\/[A-Za-z0-9._~\-/?=&%:+,@]*$/.test(v)) return "/";
+  if (v.split("?")[0].split("/").includes("..")) return "/";
+  return v;
+}
+
+// The administration shows the panel's screens inside its own menu; this is that page.
+export const shellUrl = (next) => `/admin/#omnicanal${panelNext(next)}`;
+
+// A page loaded in the administration's frame that needs the whole window to move, as when the
+// site's own session has ended: the sign-in belongs to the administration, not to the frame.
+export function topNavigationPage(url, nonce) {
+  return `<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Omnicanal</title></head>
+<body><p>Abriendo la administración…</p>
+<script nonce="${nonce}">try{(window.top||window).location.replace(${scriptJson(url)})}catch(e){location.replace(${scriptJson(url)})}</script>
+</body></html>`;
+}
+
+export function handoffPage({ token, user }, nonce, next = "/") {
   const session = { token, user };
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Omnicanal</title></head>
 <body><p>Abriendo Omnicanal…</p><noscript>Omnicanal necesita JavaScript.</noscript>
-<script nonce="${nonce}">try{localStorage.setItem(${scriptJson(PANEL_SESSION_KEY)},${scriptJson(JSON.stringify(session))})}catch(e){}location.replace(${scriptJson(EMBED_PREFIX + "/")})</script>
+<script nonce="${nonce}">try{localStorage.setItem(${scriptJson(PANEL_SESSION_KEY)},${scriptJson(JSON.stringify(session))})}catch(e){}location.replace(${scriptJson(EMBED_PREFIX + panelNext(next))})</script>
 </body></html>`;
+}
+
+// How the site's account opens Omnicanal, as two Express handlers:
+// - `entrar` (/omnicanal/entrar?next=…) signs the person in to the panel with their site session
+//   (an administrator as the instance's administrator, or as their agent once linked; a salesperson
+//   only as the agent they are linked to) and lands on the screen `next`.
+// - `pageRedirect` sends an administrator who opens a screen of the panel as a page of its own
+//   (an address typed or saved, the return from Google's consent screen) to the administration,
+//   where that screen is an entry of the menu. Its API, files and webhooks are untouched.
+// `principal(req)` is the site's session, `identityFor(user, opts)` who they are in Omnicanal and
+// `mintToken(secret, identity, seconds)` the panel's session.
+export function omniEntry({ principal, identityFor, mintToken, secret }) {
+  const entrar = async (req, res) => {
+    res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+    const next = panelNext(req.query.next);
+    const dest = req.get("sec-fetch-dest");
+    const user = await principal(req);
+    // The site's session has ended: signing in belongs to the administration, whichever page asked.
+    if (!user) {
+      if (dest !== "iframe") return res.redirect(303, shellUrl(next));
+      const nonce = randomBytes(16).toString("base64");
+      return res
+        .set("Content-Security-Policy", handoffCsp(nonce))
+        .type("html")
+        .send(topNavigationPage(shellUrl(next), nonce));
+    }
+    // Opened as a page of its own, an administrator goes to the administration, where the screen is
+    // part of the menu. A salesperson has no such menu: they keep the panel as their agent.
+    if (dest === "document" && user.role === "admin") return res.redirect(303, shellUrl(next));
+    let identity;
+    try {
+      identity = await identityFor(user, { requireAgent: user.role !== "admin" });
+    } catch (error) {
+      res.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self'");
+      return res
+        .status(error.status || 502)
+        .type("html")
+        .send(messagePage("No se pudo abrir Omnicanal", error.message, { href: "/admin/", label: "Volver al panel" }));
+    }
+    // Without a linked agent the panel shows the person's name, not the site's system identity.
+    if (identity.agentId === null) identity = { ...identity, name: user.name };
+    const nonce = randomBytes(16).toString("base64");
+    // Twelve hours, like a sign-in on Omnicanal's own form.
+    const token = mintToken(secret, identity, 12 * 60 * 60);
+    res
+      .set("Content-Security-Policy", handoffCsp(nonce))
+      .type("html")
+      .send(handoffPage({ token, user: identity }, nonce, next));
+  };
+  const pageRedirect = async (req, res, next) => {
+    try {
+      if (req.method !== "GET" || req.get("sec-fetch-dest") !== "document") return next();
+      if (/^\/(api|assets|clients|entrar)(\/|$)/.test(req.path) || /\.[A-Za-z0-9]+$/.test(req.path)) return next();
+      const user = await principal(req);
+      if (user?.role !== "admin") return next();
+      return res.redirect(303, shellUrl(req.url));
+    } catch (error) {
+      return next(error);
+    }
+  };
+  return { entrar, pageRedirect };
 }
 
 export function messagePage(title, message, link) {

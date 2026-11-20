@@ -1,0 +1,95 @@
+/* The customer's quote (/cotizacion/<token>): the site's dark style on screen, a clean sheet on paper. */
+:root {
+  --bg: #05060a;
+  --surface: rgba(255, 255, 255, 0.04);
+  --line: rgba(255, 255, 255, 0.1);
+  --text: #eef1f6;
+  --text-2: #c2c8d4;
+  --muted: #8a92a5;
+  --accent: #38e1ff;
+  --accent-ink: #001419;
+  --grad: linear-gradient(100deg, #38e1ff 0%, #7c5cff 55%, #ff4fd8 100%);
+  --font-display: "Unbounded", system-ui, sans-serif;
+  --font: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; font-family: var(--font); color: var(--text); line-height: 1.55; -webkit-font-smoothing: antialiased;
+  background: radial-gradient(900px 600px at 90% -10%, rgba(124, 92, 255, 0.16), transparent 60%),
+    radial-gradient(800px 500px at -10% 30%, rgba(56, 225, 255, 0.08), transparent 60%), var(--bg);
+  background-attachment: fixed; min-height: 100vh;
+}
+img { display: block; max-width: 100%; }
+a { color: inherit; }
+h1, h2, p, dl, dd, figure { margin: 0; }
+
+.q-top { max-width: 880px; margin: 0 auto; padding: 22px 16px 0; display: flex; align-items: center; gap: 16px; }
+.q-logo { width: clamp(110px, 30vw, 150px); height: auto; flex: none; }
+.q-dealer { display: grid; flex: 1 1 0; font-size: 12.5px; color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+.q-dealer strong { color: var(--text); font-size: 14px; }
+.q-lang { flex: none; margin-left: auto; align-self: flex-start; font-size: 12px; font-weight: 700; color: var(--muted); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; }
+
+.q-sheet { max-width: 880px; margin: 18px auto 40px; padding: 0 16px; display: grid; gap: 16px; }
+.q-hero, .q-unit, .q-figures, .q-notes, .q-foot {
+  border: 1px solid var(--line); border-radius: 20px; padding: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015));
+}
+.q-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); }
+.q-hero h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(24px, 6vw, 38px); letter-spacing: -0.02em; line-height: 1.1; margin-top: 10px; }
+.q-hero h1 span { display: inline-block; color: var(--text-2); font-weight: 500; }
+.q-meta { margin-top: 10px; color: var(--muted); font-size: 14px; }
+.q-meta strong { color: var(--text); }
+.q-notice { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: rgba(255, 200, 87, 0.1); border: 1px solid rgba(255, 200, 87, 0.3); color: #ffd98a; font-size: 14px; }
+
+.q-unit { display: grid; gap: 18px; }
+@media (min-width: 680px) { .q-unit { grid-template-columns: 1.3fr 1fr; align-items: center; } }
+.q-photo img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 14px; background: #0d1017; }
+.q-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+.q-facts div:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.q-facts dt { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
+.q-facts dd { font-weight: 700; overflow-wrap: anywhere; }
+
+.q-figures { display: grid; gap: 16px; }
+.q-headline { text-align: center; padding: 8px 0 4px; }
+.q-label { color: var(--muted); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; }
+.q-big { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.03em; line-height: 1; margin-top: 6px; }
+.q-big span { font-size: clamp(44px, 13vw, 68px); background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.q-big small { font-size: 18px; color: var(--text-2); margin-left: 4px; }
+.q-sub { color: var(--text-2); margin-top: 8px; font-size: 14px; font-weight: 600; }
+.q-lines { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.q-lines th, .q-lines td { padding: 10px 0; border-top: 1px solid var(--line); font-size: 14.5px; }
+.q-lines th { text-align: left; font-weight: 500; color: var(--text-2); }
+.q-lines td { text-align: right; font-weight: 700; white-space: nowrap; padding-left: 12px; }
+.q-lines tr.sum th, .q-lines tr.sum td { color: var(--text); font-weight: 800; }
+.q-lines tr.minus td { color: #7ff0c4; }
+.q-omitted { font-size: 12.5px; color: var(--muted); }
+
+.q-notes h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); margin-bottom: 6px; }
+.q-notes p { white-space: pre-wrap; }
+
+.q-actions { display: grid; gap: 10px; }
+@media (min-width: 560px) { .q-actions { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); } }
+.q-btn {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 50px; padding: 0 22px; border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.17); background: rgba(255, 255, 255, 0.07); color: var(--text);
+  font: inherit; font-weight: 700; font-size: 15px; text-decoration: none; cursor: pointer;
+}
+.q-btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; box-shadow: 0 10px 40px -10px rgba(56, 225, 255, 0.7); }
+.q-foot { font-size: 14px; color: var(--text-2); display: grid; gap: 10px; }
+.q-fine { font-size: 12px; color: var(--muted); line-height: 1.6; }
+
+@media print {
+  :root { --text: #0e1a2b; --text-2: #33445b; --muted: #5b6a7e; --line: #d9dfe7; --accent: #0b2a4a; color-scheme: light; }
+  body { background: #fff; }
+  .no-print { display: none !important; }
+  .q-top { padding-top: 0; }
+  .q-logo { background: #05060a; border-radius: 6px; padding: 6px; }
+  .q-sheet { margin-top: 12px; gap: 10px; }
+  .q-hero, .q-unit, .q-figures, .q-notes, .q-foot { background: #fff; border-color: var(--line); break-inside: avoid; padding: 14px 16px; }
+  .q-big span { background: none; color: var(--text); }
+  .q-lines tr.minus td { color: var(--text); }
+  .q-notice { color: #6b4e00; background: #fff6dd; }
+  .q-photo img { max-height: 260px; }
+}

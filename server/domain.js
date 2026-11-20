@@ -1,5 +1,6 @@
 import { scrypt as scryptCb, randomBytes, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
+import { QUOTE_TERMS } from "../js/quote-math.js";
 const scrypt = promisify(scryptCb);
 export class InputError extends Error {
   constructor(message, status = 400) {
@@ -178,8 +179,9 @@ export function reservationInput(b) {
     omniConversationId: optionalCount(b.omniConversationId),
   };
 }
-export const APPOINTMENT_KINDS = ["testdrive", "visit", "delivery", "call", "followup"];
-export const APPOINTMENT_STATUSES = ["scheduled", "confirmed", "completed", "cancelled", "no_show"];
+// "service" is the service department's: maintenance, repairs, inspections.
+export const APPOINTMENT_KINDS = ["testdrive", "visit", "delivery", "call", "followup", "service"];
+export const APPOINTMENT_STATUSES = ["pending", "confirmed", "completed", "cancelled", "no_show"];
 // Dates and times are the dealership's wall clock; the database turns them into an instant.
 function localSlot(b) {
   const date = text(b.date, 10),
@@ -219,5 +221,72 @@ export function appointmentUpdate(b) {
   if (b.sellerId !== undefined) out.sellerId = optionalId(b.sellerId, "Vendedor");
   if (!Object.keys(out).length) throw new InputError("No hay cambios que guardar.");
   return out;
+}
+// The team's profiles. "service" is the service department: it loads units and photos, keeps its
+// own agenda and answers its chats, but does not reserve, quote or sell.
+export const ROLES = ["admin", "sales", "service"];
+export const ROLE_LABELS = { admin: "Administración", sales: "Ventas", service: "Servicio" };
+export const sells = (role) => role === "admin" || role === "sales";
+export const VEHICLE_BODIES = ["suv", "truck", "sedan", "coupe", "electric", "hatch", "van"];
+
+// What a salesperson or the service department records about a unit that just arrived. Price,
+// details and publication are left to administration.
+export function intakeInput(b) {
+  const body = VEHICLE_BODIES.includes(b.body) ? b.body : null;
+  if (!body) throw new InputError("Selecciona una carrocería.");
+  return {
+    year: b.year,
+    make: text(b.make, 80),
+    model: text(b.model, 100),
+    trim: text(b.trim, 100),
+    vin: text(b.vin, 17).toUpperCase(),
+    miles: b.miles === "" || b.miles == null ? 0 : b.miles,
+    body,
+    condition: ["used", "new", "certified"].includes(b.condition) ? b.condition : "used",
+    ext: text(b.ext, 100),
+    notes: text(b.notes, 2000),
+    // From the VIN decoder, when it was used; administration reviews them.
+    engine: text(b.engine, 150),
+    drive: text(b.drive, 30),
+    trans: text(b.trans, 100),
+    fuel: ["gas", "diesel", "hybrid", "electric"].includes(b.fuel) ? b.fuel : "",
+  };
+}
+
+const percent = (v, max, label) => {
+  const n = Number(v ?? 0);
+  if (v === "" || !Number.isFinite(n) || n < 0 || n > max || Math.abs(n * 1000 - Math.round(n * 1000)) > 0.0001)
+    throw new InputError(`${label} inválido (0 a ${max}).`);
+  return n;
+};
+export function quoteInput(b) {
+  const term = Number(b.termMonths ?? 0);
+  if (!QUOTE_TERMS.includes(term)) throw new InputError("Plazo inválido.");
+  return {
+    ...customer(b),
+    down: money(b.down ?? 0),
+    tradeIn: money(b.tradeIn ?? 0),
+    apr: term ? percent(b.apr, 40, "Tasa") : 0,
+    termMonths: term,
+    notes: text(b.notes, 2000),
+    // Only administration may change these; the route ignores them for everyone else.
+    price: b.price === undefined || b.price === "" || b.price === null ? null : money(b.price),
+    fees: b.fees === undefined || b.fees === "" || b.fees === null ? null : money(b.fees),
+    taxRate: b.taxRate === undefined || b.taxRate === "" || b.taxRate === null ? null : percent(b.taxRate, 20, "Impuesto"),
+    omniConversationId: optionalCount(b.omniConversationId),
+  };
+}
+export function quoteSettingsInput(b) {
+  const days = integer(b.validDays ?? 3, 1, 30, "Vigencia");
+  const term = Number(b.term ?? 72);
+  if (!QUOTE_TERMS.includes(term) || !term) throw new InputError("Plazo por defecto inválido.");
+  return {
+    taxRate: percent(b.taxRate, 20, "Impuesto"),
+    docFee: money(b.docFee ?? 0),
+    apr: percent(b.apr ?? 6.9, 40, "Tasa"),
+    term,
+    validDays: days,
+    note: text(b.note, 1000),
+  };
 }
 export const phoneDigits = (v) => String(v ?? "").replace(/\D/g, "");

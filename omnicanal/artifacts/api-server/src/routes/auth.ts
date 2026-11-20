@@ -15,6 +15,7 @@ import {
   hashPassword,
   safeEqual,
   signToken,
+  siteLoginOnly,
   type AuthUser,
 } from "../lib/auth";
 import { clearPresence, touchPresence } from "../lib/presence";
@@ -24,6 +25,10 @@ import { requireAuth } from "../middlewares/auth";
 const router: IRouter = Router();
 
 router.post("/auth/login", async (req, res): Promise<void> => {
+  if (siteLoginOnly()) {
+    res.status(403).json({ error: "Aquí se entra con la cuenta del sitio: abre la administración del sitio." });
+    return;
+  }
   const parsed = LoginBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });

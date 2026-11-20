@@ -34,6 +34,14 @@ const TOKEN_TTL_SECONDS = 12 * 60 * 60;
 // ── Admin credentials ─────────────────────────────────────────────────────────
 // Configured via env. In development we fall back to a documented demo account so
 // the app stays usable out of the box; in production the env vars are required.
+/**
+ * Dentro del sitio de Premier hay una sola administración: se entra con la cuenta
+ * del sitio, que firma la sesión (/omnicanal/entrar), y este servicio no recibe
+ * contraseñas. El sitio lo enciende con SITE_LOGIN_ONLY=1. Sin él, el servicio
+ * conserva su formulario (como servicio propio, o para trabajar en el panel).
+ */
+export const siteLoginOnly = (): boolean => process.env.SITE_LOGIN_ONLY === "1";
+
 export function getAdminCredentials(): { email: string; password: string } | null {
   const email = process.env.ADMIN_EMAIL;
   const password = process.env.ADMIN_PASSWORD;

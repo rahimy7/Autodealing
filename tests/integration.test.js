@@ -21,6 +21,10 @@ test(
         ADMIN_BOOTSTRAP_PASSWORD: password,
         NODE_ENV: "test",
         OMNICANAL_DATABASE_URL: "",
+        // The owner's real credentials in .env must not leak into the test server: its first
+        // password is ADMIN_BOOTSTRAP_PASSWORD, nothing else.
+        ADMIN_PASSWORD: "",
+        ADMIN_EMAIL: "",
         OMNICANAL_SESSION_SECRET: "",
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -383,6 +387,31 @@ test(
             (await send("/api/admin/leads")).data[0].vehicle_id,
             vehicle,
           );
+          // A vehicle's page also sends financing requests and appointments, with their details.
+          for (const body of [
+            { kind: "finance", down: "$1,000 – $3,000", employment: "Jubilado", income: "Más de $5,000", credit: "No sé", ssn: "123-45-6789" },
+            { kind: "visit", date: "2026-12-01", time: "13:00", topic: "Ver el vehículo" },
+          ])
+            assert.equal(
+              (await send("/api/leads", { method: "POST", auth: false, body: { ...body, name: "QA Test", phone: "0000000000", vehicle } })).status,
+              201,
+            );
+          const [visit, finance] = (await send("/api/admin/leads")).data;
+          assert.equal(visit.kind, "visit");
+          assert.equal(visit.data.topic, "Ver el vehículo");
+          assert.equal(finance.kind, "finance");
+          assert.equal(finance.data.credit, "No sé");
+          assert.equal(finance.data.down, "$1,000 – $3,000");
+          // Only the listed fields are kept.
+          assert.equal(finance.data.ssn, undefined);
+          // A shared link previews the unit's photo, title and price.
+          const shared = await send(`/?v=${vehicle}`, { auth: false });
+          assert.match(shared.data, /<meta property="og:title" content="2022 Honda Accord[^"]*· \$\d{2},\d{3}"/);
+          assert.match(shared.data, new RegExp(`og:image" content="http://127\\.0\\.0\\.1:5182/media/vehicles/${vehicle}/${idPhoto}\\.jpg"`));
+          const preview = await send(`/media/vehicles/${vehicle}/${idPhoto}.jpg`, { auth: false });
+          assert.equal(preview.status, 200);
+          assert.equal(preview.response.headers.get("content-type"), "image/jpeg");
+          assert.doesNotMatch((await send("/?v=00000000-0000-4000-8000-000000000000", { auth: false })).data, /og:title/);
         },
       );
       await t.test(
@@ -405,6 +434,8 @@ test(
             0,
           );
           assert.equal((await send(`/media/vehicles/${vehicle}/${idPhoto}.webp`, {auth:false})).status,404);
+          assert.equal((await send(`/media/vehicles/${vehicle}/${idPhoto}.jpg`, {auth:false})).status,404);
+          assert.doesNotMatch((await send(`/?v=${vehicle}`, { auth: false })).data, /og:title/);
           assert.equal((await send(`/media/vehicles/${vehicle}/${idPhoto}/cutout.webp`, {auth:false})).status,404);
           assert.equal((await send(`/api/photos/${idPhoto}/cutout`, {auth:false})).status,404);
           assert.equal((await send(`/api/photos/${idPhoto}/cutout`)).status,200);
@@ -526,7 +557,8 @@ test(
           );
           const dashboard = (await send("/api/admin/dashboard")).data;
           assert.equal(dashboard.sales.count, 0);
-          assert.equal(dashboard.leads, 1);
+          // The test drive, financing and visit requests sent above.
+          assert.equal(dashboard.leads, 3);
           assert.ok(dashboard.recent.length);
           assert.ok((await send("/api/admin/settings")).data.name);
         },

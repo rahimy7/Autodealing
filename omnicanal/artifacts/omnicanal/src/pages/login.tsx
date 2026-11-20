@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useLogin } from "@workspace/api-client-react";
 import { Zap, ArrowRight, Loader2 } from "lucide-react";
 import { SiWhatsapp, SiInstagram, SiFacebook } from "react-icons/si";
-import { useAuth, homePathFor } from "@/lib/auth";
+import { useAuth, homePathFor, SSO_TRIED_KEY } from "@/lib/auth";
 import { useClient, useModules, usePlatform } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { withBase } from "@/lib/base-path";
@@ -53,6 +53,25 @@ export default function LoginPage() {
 
   const loginMutation = useLogin();
 
+  // Con la cuenta del sitio como única entrada, esta pantalla no pide nada: manda
+  // a /omnicanal/entrar, que firma la sesión si el sitio ya tiene una y, si no,
+  // lleva al inicio de sesión de la administración. Una sola vez por pestaña: si
+  // vuelve sin sesión válida se queda aquí con el botón, en lugar de dar vueltas.
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    if (!SITE_LOGIN_URL) return;
+    try {
+      if (sessionStorage.getItem(SSO_TRIED_KEY)) {
+        setStuck(true);
+        return;
+      }
+      sessionStorage.setItem(SSO_TRIED_KEY, "1");
+    } catch {
+      /* sin almacenamiento de sesión: sigue; el servidor no repite nada */
+    }
+    window.location.replace(SITE_LOGIN_URL);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -71,6 +90,50 @@ export default function LoginPage() {
       );
     }
   };
+
+  if (SITE_LOGIN_URL) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 py-10 bg-background">
+        <div className="w-full max-w-sm bg-card border border-card-border rounded-2xl p-8 shadow-xl text-center" data-testid="site-login-only">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-2xl bg-primary flex items-center justify-center overflow-hidden">
+            {branding.logoUrl ? (
+              <img src={withBase(branding.logoUrl)} alt={branding.productName} className="w-full h-full object-contain" />
+            ) : (
+              <Zap className="w-6 h-6 text-primary-foreground" strokeWidth={2.5} />
+            )}
+          </div>
+          {stuck ? (
+            <>
+              <h2 className="text-lg font-bold text-foreground mb-1">No se pudo abrir tu sesión</h2>
+              <p className="text-sm text-muted-foreground mb-5">
+                Entra de nuevo con tu usuario de {business.displayName}.
+              </p>
+              <a
+                href={SITE_LOGIN_URL}
+                onClick={() => {
+                  try {
+                    sessionStorage.removeItem(SSO_TRIED_KEY);
+                  } catch {
+                    /* nada */
+                  }
+                }}
+                className="w-full inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium py-2.5 rounded-lg transition-colors"
+                data-testid="link-site-login"
+              >
+                Entrar con mi usuario de {business.displayName}
+                <ArrowRight className="w-4 h-4" />
+              </a>
+            </>
+          ) : (
+            <>
+              <Loader2 className="w-5 h-5 mx-auto mb-3 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Entrando con tu cuenta de {business.displayName}…</p>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-10 bg-background">

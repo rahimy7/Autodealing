@@ -48,7 +48,8 @@ function startOfToday(): Date {
 function serialize(row: AppointmentView) {
   return {
     id: row.id,
-    contactId: row.contactId,
+    // Una cita del sitio puede no tener aún contacto en el CRM (null en la base).
+    contactId: row.contactId ?? 0,
     contactName: row.contactName,
     contactPhone: row.contactPhone,
     conversationId: row.conversationId,
