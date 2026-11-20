@@ -19,3 +19,10 @@ export function toPublicUrl(pathOrUrl: string, env: NodeJS.ProcessEnv = process.
   if (!base) return null;
   return `${base}/${pathOrUrl.replace(/^\/+/, "")}`;
 }
+
+/**
+ * A welcome picture is either an object in the media bucket ("custom-oferta-1a2b.jpeg") or a
+ * picture the site itself serves: a path such as "/img/welcome.jpg" or a full https:// URL. The
+ * second kind needs no storage account, only the public address above.
+ */
+export const isSiteImage = (path: string): boolean => path.startsWith("/") || /^https?:\/\//i.test(path);

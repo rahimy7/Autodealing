@@ -6,7 +6,7 @@
 // It runs against the database in DATABASE_URL (production's, when .env points there) and refuses
 // to run when Omnicanal already has agents, labels, workflows or knowledge bases: it never
 // overwrites or duplicates what someone has set up. The AI key is not needed to create them.
-import { SALES_PROMPT, SCHEDULER_PROMPT, DEALER_KB, LABELS } from "./spec.js";
+import { SALES_PROMPT, SCHEDULER_PROMPT, DEALER_KB, LABELS, WELCOME } from "./spec.js";
 
 const { omniConfigured, omniConfigError, systemIdentity, omniRequest, syncInventory } = await import("../../server/omni-service.js");
 if (!omniConfigured()) {
@@ -19,7 +19,7 @@ const oc = (path, options) => omniRequest(identity, path, options);
 const created = {};
 try {
   // 0. Nothing to overwrite.
-  for (const path of ["/agents", "/labels", "/workflows", "/knowledge-bases"]) {
+  for (const path of ["/agents", "/labels", "/workflows", "/knowledge-bases", "/custom-messages"]) {
     const list = await oc(path);
     if (list.length) throw new Error(`${path} already has ${list.length} item(s): not creating duplicates.`);
   }
@@ -135,6 +135,13 @@ try {
   const wf = await oc("/workflows", { method: "POST", body: { name: "WhatsApp · ventas y citas", channels: ["whatsapp"], isActive: true, graph } });
   created.workflow = wf.id;
   console.log("workflow ->", wf.id, "active:", wf.isActive);
+
+  // 7. The default welcome message, with its picture and buttons. Active: it is what a new
+  // WhatsApp conversation that opens with a bare greeting receives.
+  const welcome = await oc("/custom-messages", { method: "POST", body: { kind: "welcome", ...WELCOME } });
+  await oc(`/custom-messages/${welcome.id}/activate`, { method: "POST", body: { isActive: true } });
+  created.welcome = welcome.id;
+  console.log("welcome ->", welcome.id, "(active)");
   console.log("\nCREATED:", JSON.stringify(created));
 } catch (error) {
   console.log("\nSTOPPED:", error.message);

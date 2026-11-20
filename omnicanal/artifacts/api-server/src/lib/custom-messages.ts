@@ -2,6 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { db, customMessagesTable, conversationsTable, messagesTable } from "@workspace/db";
 import { deliverInteractiveMessage, deliverMediaMessage, deliverMessage, settleAfterAttachment, type Channel } from "./meta";
 import { signMediaUrl } from "./supabase";
+import { isSiteImage, toPublicUrl } from "./public-url";
+import { mediaSummary } from "./media";
 import type { Log } from "./messaging";
 
 type Conversation = typeof conversationsTable.$inferSelect;
@@ -9,6 +11,11 @@ type Conversation = typeof conversationsTable.$inferSelect;
 // Meta fetches the image while handling the send, so a short-lived signed URL is
 // enough — the bucket stays private.
 const IMAGE_URL_TTL_SECONDS = 600;
+
+// What Meta can download (a bucket object is signed, a site picture gets the public address), or null when it cannot be built (no storage, or no public address).
+export async function welcomeImageUrl(path: string): Promise<string | null> {
+  return isSiteImage(path) ? toPublicUrl(path) : signMediaUrl(path, IMAGE_URL_TTL_SECONDS);
+}
 
 export async function getActiveWelcomeMessage(channel: string) {
   const [message] = await db
@@ -36,13 +43,22 @@ export async function maybeSendWelcomeMessage(
 
   // Persist first: the operator must see what the customer was sent even if the
   // Meta call then fails.
-  const imageUrl = message.imagePath ? await signMediaUrl(message.imagePath, IMAGE_URL_TTL_SECONDS) : null;
+  const imageUrl = message.imagePath ? await welcomeImageUrl(message.imagePath) : null;
+  if (message.imagePath && !imageUrl) {
+    log.error(
+      { conversationId: conv.id, messageId: message.id },
+      "welcome image skipped: sin almacenamiento de imágenes ni PUBLIC_BASE_URL / RAILWAY_PUBLIC_DOMAIN para armar su enlace",
+    );
+  }
 
   if (message.imagePath) {
+    // The panel shows a stored object through /api/media; a site picture by its own address.
+    const site = isSiteImage(message.imagePath);
     await db.insert(messagesTable).values({
       conversationId: conv.id,
       sender: "bot",
-      content: `/api/media/${message.imagePath}`,
+      content: site ? mediaSummary("image", null) : `/api/media/${message.imagePath}`,
+      mediaUrl: site ? imageUrl : null,
       type: "image",
       isAiSuggestion: false,
     });
