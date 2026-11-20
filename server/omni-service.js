@@ -8,6 +8,8 @@ import {
   omniConfig,
   createClient,
   inventoryKnowledge,
+  vehicleCatalog,
+  sitePublicOrigin,
   vehicleTitle,
   EMBED_PREFIX,
 } from "./omnicanal.js";
@@ -267,18 +269,44 @@ const KB_NAME = "Inventario del concesionario (sincronizado)";
 let running = null,
   again = false,
   timer = null;
+// Whose products these are in Omnicanal: each sync replaces only these.
+const CATALOG_SOURCE = "site-vehiculos";
 async function runSync(publicUrlFallback) {
   const api = ensure();
   const settings = await omniSettings();
   const { rows } = await query(
     "SELECT id,stock,status,data FROM vehicles WHERE status IN ('available','reserved')",
   );
+  // The saved address first, then the one this request came in on, then the service's own.
+  const publicUrl = settings.publicUrl || publicUrlFallback || sitePublicOrigin();
+  const identity = await systemIdentity();
+
+  // The vehicles' photos, so the agent can send them. Best effort: without them it still answers
+  // from the knowledge base, only without pictures.
+  const photoSlugs = new Map();
+  if (publicUrl && rows.length) {
+    const { rows: photos } = await query(
+      "SELECT DISTINCT ON (vehicle_id) vehicle_id,id FROM vehicle_photos WHERE vehicle_id = ANY($1) ORDER BY vehicle_id,position,created_at",
+      [rows.map((v) => v.id)],
+    );
+    const items = vehicleCatalog(rows, { publicUrl, photos: new Map(photos.map((p) => [p.vehicle_id, p.id])) });
+    try {
+      await api.request(identity, "/site-catalog", {
+        method: "PUT",
+        body: { source: CATALOG_SOURCE, items: items.map(({ vehicleId, ...item }) => item) },
+      });
+      for (const item of items) photoSlugs.set(item.vehicleId, item.slug);
+    } catch (error) {
+      console.error("Omnicanal vehicle photos sync failed:", error.message);
+    }
+  }
+
   const content = inventoryKnowledge(rows, {
     dealer: await dealerInfo(),
-    publicUrl: settings.publicUrl || publicUrlFallback || "",
+    publicUrl,
+    photoSlugs,
     timeZone: DEALER_TZ,
   });
-  const identity = await systemIdentity();
   const count = rows.filter((v) => !v.data.demo).length;
   try {
     let id = settings.knowledgeBaseId;
@@ -329,6 +357,23 @@ export async function syncInventory(publicUrlFallback) {
     }
   })();
   return running;
+}
+// Once after the service starts, when Omnicanal has had time to come up: a deploy can change what
+// the agents receive (the photos, the links), so it does not wait for the next inventory change.
+export function syncAfterStart(delays = [45_000, 3 * 60_000, 10 * 60_000]) {
+  if (!client) return;
+  const attempt = (i) => {
+    const t = setTimeout(async () => {
+      try {
+        if ((await omniSettings()).autoSync) await syncInventory();
+      } catch (error) {
+        if (i + 1 < delays.length) return attempt(i + 1);
+        console.error("Omnicanal inventory sync after start failed:", error.message);
+      }
+    }, delays[i]);
+    t.unref?.();
+  };
+  attempt(0);
 }
 export function scheduleInventorySync(delay = 2500) {
   if (!client) return;

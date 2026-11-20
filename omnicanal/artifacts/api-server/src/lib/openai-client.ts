@@ -842,11 +842,16 @@ const SCOPE_CONDUCT = `Fuera de tu alcance (regla dura):
 
 // Instrucciones de producto: el enlace una vez por producto, foto solo en los
 // perfiles que la tienen habilitada (y entonces el enlace va en su pie).
-function productConduct(canSendPhoto: boolean): string {
+export function productConduct(canSendPhoto: boolean, photosPerReply = business.photosPerReply): string {
+  // A client that sells by showing several units (business.photosPerReply > 1) shows them together
+  // when the customer asks what there is; everyone else keeps one product per message.
+  const several = canSendPhoto && photosPerReply > 1;
   const lines = [
     "Productos:",
     `- La primera vez que hables de un producto concreto en la conversación, comparte el enlace de su ficha tal cual aparece en la base de conocimiento${canSendPhoto ? " (con la foto, ver abajo)" : ""}. Después no lo repitas: el cliente ya lo tiene, salvo que te lo vuelva a pedir.`,
-    "- UN SOLO producto por mensaje, con UN SOLO enlace. Si hay varias opciones válidas, pregunta lo que te falte para decidir en vez de enumerarlas todas.",
+    several
+      ? `- Cuando el cliente pregunte qué hay, pida opciones o nombre un tipo de producto, enseña de 2 a ${photosPerReply} productos concretos que encajen en el mismo mensaje, cada uno con su foto. Cuando ya hablan de uno en particular, habla solo de ese.`
+      : "- UN SOLO producto por mensaje, con UN SOLO enlace. Si hay varias opciones válidas, pregunta lo que te falte para decidir en vez de enumerarlas todas.",
     "- No copies la tabla de especificaciones completa. Da el dato que preguntaron y deja el enlace para el resto.",
     "- Nunca inventes un producto, un enlace ni una especificación. Si no está en tu base de conocimiento, escala en silencio (ver 'Fuera de tu alcance').",
   ];
@@ -865,7 +870,9 @@ function productConduct(canSendPhoto: boolean): string {
     // el backend no reenvía una foto que ya salió en la sesión.
     lines.push(
       "- La primera vez que nombres un producto concreto en la conversación, termina el mensaje con [[FOTO:identificador]], usando el Identificador que aparece junto al nombre en tu base de conocimiento. Es una marca para el sistema: él adjunta la imagen con el nombre y el enlace en el pie, así que en ese mensaje no escribas el enlace, no describas la foto ni pegues su URL.",
-      "- Una sola marca por mensaje, la del producto del que estás hablando. Si aún no has concretado cuál, no pongas ninguna. Si ese producto ya salió en la conversación, no la pongas otra vez salvo que el cliente pida la foto.",
+      several
+        ? `- Una marca por cada producto que enseñes, hasta ${photosPerReply} por mensaje, todas al final y en el orden en que los nombraste. Si un producto ya salió en la conversación, no pongas su marca otra vez salvo que el cliente pida la foto.`
+        : "- Una sola marca por mensaje, la del producto del que estás hablando. Si aún no has concretado cuál, no pongas ninguna. Si ese producto ya salió en la conversación, no la pongas otra vez salvo que el cliente pida la foto.",
     );
   }
   return lines.join("\n");

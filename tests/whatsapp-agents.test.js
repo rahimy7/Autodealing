@@ -50,3 +50,9 @@ test("WhatsApp welcome: fits what WhatsApp accepts and its picture ships with th
   assert.match(WELCOME.body, /asistente virtual/, "says it is a virtual assistant");
   assert.deepEqual(WELCOME.channels, ["whatsapp"]);
 });
+
+test("WhatsApp agents: the sales agent sells with photos and never shows internal ids", () => {
+  assert.match(SALES_PROMPT, /cada una con su foto/);
+  assert.match(SALES_PROMPT, /No le preguntes primero qué tipo quiere/);
+  assert.match(SALES_PROMPT, /número de stock o el identificador/);
+});

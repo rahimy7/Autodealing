@@ -6,6 +6,9 @@ import {
   omniConfig,
   createClient,
   inventoryKnowledge,
+  vehicleCatalog,
+  vehiclePhotoSlug,
+  sitePublicOrigin,
   vehicleMessage,
   messageView,
   mediaFile,
@@ -113,6 +116,47 @@ test("the virtual agent only learns about real units for sale", () => {
   for (const hidden of ["DemoCar", "Sold", "Draft"]) assert.ok(!text.includes(hidden), hidden);
   assert.ok(text.indexOf("Accord") < text.indexOf("Civic"), "available units come first");
   assert.match(inventoryKnowledge([], { dealer: { name: "P" } }), /no hay vehículos confirmados/);
+});
+
+test("each listed unit with a photo becomes a product the agent can send, with a JPEG and its page", () => {
+  const units = [
+    v("available", car),
+    v("reserved", { ...car, model: "Civic" }, "22222222-2222-4222-8222-222222222222", "PL-2"),
+    v("available", { ...car, model: "DemoCar", demo: true }, "33333333-3333-4333-8333-333333333333", "PL-3"),
+    v("sold", { ...car, model: "Sold" }, "44444444-4444-4444-8444-444444444444", "PL-4"),
+    v("available", { ...car, model: "Pilot", priceOnRequest: true, price: 0, cats: ["suv"], drive: "AWD" }, "66666666-6666-4666-8666-666666666666", "PL-6"),
+    v("available", { ...car, model: "NoPhoto" }, "77777777-7777-4777-8777-777777777777", "PL-7"),
+  ];
+  const photos = new Map(units.filter((u) => u.data.model !== "NoPhoto").map((u, i) => [u.id, `aaaaaaaa-0000-4000-8000-00000000000${i}`]));
+  const items = vehicleCatalog(units, { publicUrl: "https://premier.test/", photos });
+  assert.deepEqual(items.map((i) => i.slug).sort(), ["2022-honda-accord-ex-11111111", "2022-honda-civic-ex-22222222", "2022-honda-pilot-ex-66666666"]);
+  assert.equal(items.at(-1).slug, "2022-honda-civic-ex-22222222", "reserved units come last");
+  for (const hidden of ["DemoCar", "Sold", "NoPhoto"]) assert.ok(!items.some((i) => i.name.includes(hidden)), hidden);
+  const accord = items.find((i) => i.vehicleId === "11111111-1111-4111-8111-111111111111");
+  assert.equal(accord.url, "https://premier.test/?v=11111111-1111-4111-8111-111111111111");
+  assert.equal(accord.imageUrl, `https://premier.test/media/vehicles/11111111-1111-4111-8111-111111111111/${photos.get(accord.vehicleId)}.jpg`);
+  assert.equal(accord.name, "2022 Honda Accord EX\n20,000 millas · sedán · USD 22,500");
+  const pilot = items.find((i) => i.slug.startsWith("2022-honda-pilot"));
+  assert.equal(pilot.name, "2022 Honda Pilot EX\n20,000 millas · SUV · AWD · precio con un asesor");
+  assert.match(items.find((i) => i.name.includes("Civic")).name, /reservado$/);
+  // The slug is what the agent writes in [[FOTO:…]]: Omnicanal's marker takes [a-z0-9-].
+  for (const i of items) assert.match(i.slug, /^[a-z0-9][a-z0-9-]*$/);
+  assert.equal(vehiclePhotoSlug(v("available", { year: 2021, make: "Citroën", model: "C5 Aircross" }, "abcdef12-3456-4789-8abc-def012345678")), "2021-citroen-c5-aircross-abcdef12");
+  // Meta downloads the photo by itself: no public https address, no photos.
+  assert.deepEqual(vehicleCatalog(units, { publicUrl: "", photos }), []);
+  assert.deepEqual(vehicleCatalog(units, { publicUrl: "http://localhost:8080", photos }), []);
+
+  // The knowledge base names the photo so the agent can ask for it.
+  const text = inventoryKnowledge(units, { dealer: { name: "Premier" }, publicUrl: "https://premier.test", photoSlugs: new Map(items.map((i) => [i.vehicleId, i.slug])) });
+  assert.match(text, /Accord EX — stock PL-1[\s\S]*Identificador: 2022-honda-accord-ex-11111111/);
+  assert.ok(!/NoPhoto[^•]*Identificador/.test(text), "a unit without a photo has no identifier");
+});
+
+test("the site's public address comes from PUBLIC_BASE_URL or Railway's domain", () => {
+  assert.equal(sitePublicOrigin({ PUBLIC_BASE_URL: "https://premierlinemotors.com/" }), "https://premierlinemotors.com");
+  assert.equal(sitePublicOrigin({ PUBLIC_BASE_URL: "https://premierlinemotors.com/omnicanal" }), "https://premierlinemotors.com");
+  assert.equal(sitePublicOrigin({ RAILWAY_PUBLIC_DOMAIN: "premier-production.up.railway.app" }), "https://premier-production.up.railway.app");
+  assert.equal(sitePublicOrigin({}), "");
 });
 
 test("a shared vehicle carries its price and public link", () => {

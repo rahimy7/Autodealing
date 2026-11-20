@@ -1144,10 +1144,14 @@ async function runVirtualAgentReply(
 
   // Product photos the agent asked for. Only honoured for the profiles that have
   // it enabled, so a stray directive in a hand-written prompt can't turn the
-  // agenda or qualifier bots into image senders. One photo per reply — the base
-  // conduct forbids bursts, and this enforces it regardless of what the model does.
+  // agenda or qualifier bots into image senders. At most business.photosPerReply
+  // photos per reply (1 unless the client sells by showing several units) — the base
+  // conduct asks for that, and this enforces it regardless of what the model does.
   const photoSlugs = PHOTO_ENABLED_PROFILES.has(agent.profileType ?? "general")
-    ? [...reply.matchAll(PHOTO_DIRECTIVE)].map((m) => m[1].toLowerCase()).slice(0, 1)
+    ? [...new Set([...reply.matchAll(PHOTO_DIRECTIVE)].map((m) => m[1].toLowerCase()))].slice(
+        0,
+        clientConfig.business.photosPerReply,
+      )
     : [];
   // Las imágenes fijas del negocio siguen la misma regla: mismos perfiles, una por
   // respuesta.
@@ -1165,9 +1169,15 @@ async function runVirtualAgentReply(
   const sentImages = new Set(fromUs.filter((m) => m.type === "image").map((m) => m.mediaUrl ?? m.content));
 
   const photoProducts = photoSlugs.length
-    ? await db.select().from(productsTable).where(inArray(productsTable.slug, photoSlugs))
+    ? await db
+        .select()
+        .from(productsTable)
+        // A product the source withdrew (a vehicle that sold) keeps its row but no longer has a photo to send.
+        .where(and(inArray(productsTable.slug, photoSlugs), eq(productsTable.active, true)))
     : [];
   const photosToSend: Array<{ slug: string; name: string; url: string; imageUrl: string }> = [];
+  // In the order the agent named them, which is the order the customer reads them in.
+  photoProducts.sort((a, b) => photoSlugs.indexOf(a.slug) - photoSlugs.indexOf(b.slug));
   for (const product of photoProducts) {
     if (!product.imageUrl) {
       log.info({ conversationId, slug: product.slug }, "product photo skipped: no image");

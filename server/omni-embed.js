@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pipeline } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { EMBED_PREFIX } from "./omnicanal.js";
+import { EMBED_PREFIX, sitePublicOrigin } from "./omnicanal.js";
 import { workHours } from "./work-hours.js";
 import { mergeLegacyAppointmentsFromUrl } from "./appointments-merge.js";
 
@@ -38,14 +38,8 @@ const SITE_ONLY = [
 // The address Meta downloads images from and Google returns to: the site's public domain plus
 // /omnicanal. PUBLIC_BASE_URL names the site's domain; on Railway its generated domain is used.
 export function omniPublicUrl(env) {
-  const explicit = String(env.PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "");
-  const railway = String(env.RAILWAY_PUBLIC_DOMAIN || "")
-    .trim()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/+$/, "");
-  const base = explicit || (railway ? `https://${railway}` : "");
-  if (!base) return "";
-  return base.endsWith(EMBED_PREFIX) ? base : base + EMBED_PREFIX;
+  const base = sitePublicOrigin(env);
+  return base ? base + EMBED_PREFIX : "";
 }
 
 export function childEnv(env, cfg, hours = workHours(env)) {

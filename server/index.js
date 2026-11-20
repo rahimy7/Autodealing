@@ -34,6 +34,7 @@ import { workHours, everyWorkSlot } from "./work-hours.js";
 import {
   pushLead,
   scheduleInventorySync,
+  syncAfterStart,
   markConversationSale,
   omniEmbedded,
   attachEmbedded,
@@ -1050,6 +1051,7 @@ const server = app.listen(Number(process.env.PORT) || 8080, "0.0.0.0", () =>
 );
 const omnicanal = embedded ? startOmnicanal(embedded, { hours }) : null;
 if (omnicanal) attachEmbedded(omnicanal.state);
+syncAfterStart();
 // Reservations that reached their date return to the catalogue even if nobody opens the app:
 // at start, once an hour within the team's hours (server/work-hours.js), and before the sales
 // app or the public catalogue shows them. Outside those hours nothing here wakes the database.

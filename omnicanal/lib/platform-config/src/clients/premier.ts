@@ -32,6 +32,13 @@ export const premier = defineClient({
     country: "Estados Unidos",
     supportEmail: "info@premierlinemotors.com",
     supportPhone: "(201) 625-0077",
+    // Un solo chat del concesionario: la conversación pasa entre el agente de
+    // ventas y el de citas según lo que pide el cliente, y presentarse con un
+    // nombre distinto en cada traspaso lo confundiría ("Hola, soy Asistente…").
+    agentsIntroduceByName: false,
+    // El vehículo se vende con su foto: a "¿qué tienen?" el agente enseña dos o
+    // tres unidades, cada una con su foto, su ficha y su enlace.
+    photosPerReply: 3,
   },
 
   modules: {

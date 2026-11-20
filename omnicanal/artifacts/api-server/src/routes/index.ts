@@ -11,6 +11,7 @@ import workflowsRouter from "./workflows";
 import knowledgeBasesRouter from "./knowledge-bases";
 import appointmentsRouter from "./appointments";
 import productsRouter from "./products";
+import siteCatalogRouter from "./site-catalog";
 import customMessagesRouter from "./custom-messages";
 import groupsRouter from "./groups";
 import planRouter from "./plan";
@@ -107,6 +108,9 @@ mountModule(router, "aiAgents", answerTrainingRouter);
 // Not in VIEW_GATES: human agents consult the catalog to share product
 // links while chatting with a customer.
 mountModule(router, "catalog", productsRouter);
+// Lo que publica el sitio del cliente (los vehículos de Premier), para que el agente mande sus fotos.
+// No depende del módulo de catálogo: escribe solo la administración (routes/site-catalog.ts).
+router.use(siteCatalogRouter);
 mountModule(router, "customMessages", customMessagesRouter);
 router.use(groupsRouter);
 router.use(planRouter);

@@ -151,6 +151,13 @@ export const BusinessSchema = z
      * presenta y para el cliente hay un solo chat del negocio.
      */
     agentsIntroduceByName: z.boolean().default(true),
+    /**
+     * Cuántas fotos de producto ([[FOTO:…]]) puede llevar una respuesta del agente
+     * virtual. 1 (lo de siempre) evita ráfagas en un catálogo de cientos de
+     * productos; un concesionario, que vende con la foto de cada unidad, enseña
+     * dos o tres opciones a la vez cuando le preguntan qué tiene.
+     */
+    photosPerReply: z.number().int().min(1).max(5).default(1),
   })
   .default({});
 

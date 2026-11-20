@@ -161,16 +161,83 @@ const priceLine = (d) =>
     ? "Precio: a consultar con un vendedor"
     : `Precio: USD ${number(d.price)}`;
 
-// Only units a customer can actually buy. Demo units are excluded on purpose: they are not real
-// stock, and the agent would quote them to real customers.
-export function inventoryKnowledge(vehicles, { dealer = {}, publicUrl = "", now = new Date(), timeZone = "America/New_York" } = {}) {
-  const listed = vehicles
+// The site's own public address, from the service's variables: PUBLIC_BASE_URL, or the domain
+// Railway generates for the service. "" when neither is set.
+export function sitePublicOrigin(env = process.env) {
+  const explicit = String(env.PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "");
+  const railway = String(env.RAILWAY_PUBLIC_DOMAIN || "")
+    .trim()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/+$/, "");
+  const base = explicit || (railway ? `https://${railway}` : "");
+  return base.endsWith(EMBED_PREFIX) ? base.slice(0, -EMBED_PREFIX.length) : base;
+}
+
+// Units a customer can buy, best first: available before reserved, newest year first. Demo units
+// are excluded on purpose: they are not real stock, and the agent would quote them to real customers.
+const listedVehicles = (vehicles) =>
+  vehicles
     .filter((v) => ["available", "reserved"].includes(v.status) && !v.data?.demo)
     .sort(
       (a, b) =>
         (a.status === "available" ? 0 : 1) - (b.status === "available" ? 0 : 1) ||
         (Number(b.data.year) || 0) - (Number(a.data.year) || 0),
     );
+
+// The name the agent writes in [[FOTO:…]] to send a vehicle's photo: readable, and unique through
+// the start of the vehicle's id.
+export function vehiclePhotoSlug(v) {
+  const words = vehicleTitle(v.data)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/, "");
+  return `${words || "vehiculo"}-${String(v.id).replace(/[^a-z0-9]/gi, "").slice(0, 8).toLowerCase()}`;
+}
+
+// What the customer reads under the photo, above the link: the unit and why it is worth a look.
+export function vehicleCaption(v) {
+  const d = v.data;
+  const facts = [
+    Number(d.miles) ? `${number(d.miles)} millas` : CONDITION[d.condition] === "nuevo" ? "nuevo" : "",
+    ...(d.cats || []).slice(0, 1).map((c) => BODY[c] || c),
+    d.drive,
+    d.priceOnRequest || !Number(d.price) ? "precio con un asesor" : `USD ${number(d.price)}`,
+    v.status === "reserved" ? "reservado" : "",
+  ].filter(Boolean);
+  return [vehicleTitle(d), facts.join(" · ")].filter(Boolean).join("\n");
+}
+
+// The photos the virtual agent can send, as Omnicanal products (its routes/site-catalog.ts): one
+// per listed unit with a photo, the JPEG the site publishes for link previews (WhatsApp takes
+// JPEG, not WebP) and the unit's page. Nothing without a public address: Meta downloads the
+// photo by itself. `photos` maps a vehicle id to its first photo's id.
+export function vehicleCatalog(vehicles, { publicUrl = "", photos = new Map() } = {}) {
+  const base = publicUrl.replace(/\/+$/, "");
+  if (!/^https:\/\//.test(base)) return [];
+  return listedVehicles(vehicles)
+    .filter((v) => photos.get(v.id))
+    .map((v) => ({
+      vehicleId: v.id,
+      slug: vehiclePhotoSlug(v),
+      name: vehicleCaption(v),
+      url: vehicleLink(base, v.id),
+      imageUrl: `${base}/media/vehicles/${v.id}/${photos.get(v.id)}.jpg`,
+      description: null,
+    }));
+}
+
+// Only units a customer can actually buy. Demo units are excluded on purpose: they are not real
+// stock, and the agent would quote them to real customers.
+// `photoSlugs` maps a vehicle id to the identifier of its photo in Omnicanal (vehicleCatalog).
+export function inventoryKnowledge(
+  vehicles,
+  { dealer = {}, publicUrl = "", photoSlugs = new Map(), now = new Date(), timeZone = "America/New_York" } = {},
+) {
+  const listed = listedVehicles(vehicles);
   const stamp = new Intl.DateTimeFormat("es-US", {
     timeZone,
     dateStyle: "long",
@@ -216,6 +283,7 @@ export function inventoryKnowledge(vehicles, { dealer = {}, publicUrl = "", now 
     lines.push(`  Estado: ${v.status === "reserved" ? "reservado" : "disponible"}`);
     const link = vehicleLink(publicUrl, v.id);
     if (link) lines.push(`  Fotos y ficha: ${link}`);
+    if (photoSlugs.get(v.id)) lines.push(`  Identificador: ${photoSlugs.get(v.id)}`);
   }
   return lines.join("\n");
 }
